@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bibliothèque — API REST</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Fonts : Playfair Display (titres) + DM Sans (corps) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<!-- ========================================================
+     HEADER
+======================================================== -->
+<header class="header">
+    <div class="header-inner">
+        <div class="logo">
+            <span class="logo-icon">📚</span>
+            <h1>Bibliothèque <span>REST API</span></h1>
+        </div>
+        <div class="header-meta">
+            <span id="bookCount">0 livre(s)</span>
+            <button class="btn btn-primary" id="btnOpenAdd">+ Ajouter un livre</button>
+        </div>
+    </div>
+</header>
+
+<!-- ========================================================
+     BARRE DE FILTRES
+======================================================== -->
+<section class="filters-bar">
+    <div class="filters-inner">
+        <input type="text" id="searchInput" placeholder="🔍 Rechercher titre ou auteur…" class="filter-input">
+        <select id="genreFilter" class="filter-select">
+            <option value="">Tous les genres</option>
+            <option value="Roman">Roman</option>
+            <option value="Science-fiction">Science-fiction</option>
+            <option value="Fantasy">Fantasy</option>
+            <option value="Roman historique">Roman historique</option>
+            <option value="Réalisme magique">Réalisme magique</option>
+        </select>
+        <select id="availFilter" class="filter-select">
+            <option value="">Toute disponibilité</option>
+            <option value="1">Disponible</option>
+            <option value="0">Emprunté</option>
+        </select>
+        <button class="btn btn-outline" id="btnFilter">Filtrer</button>
+        <button class="btn btn-ghost" id="btnReset">Réinitialiser</button>
+    </div>
+</section>
+
+<!-- ========================================================
+     NOTIFICATION TOAST
+======================================================== -->
+<div id="toast" class="toast hidden"></div>
+
+<!-- ========================================================
+     GRILLE DE LIVRES
+======================================================== -->
+<main class="main-content">
+    <div id="loading" class="loading-state">Chargement…</div>
+    <div id="emptyState" class="empty-state hidden">
+        <p>📭 Aucun livre trouvé.</p>
+    </div>
+    <div id="booksGrid" class="books-grid"></div>
+</main>
+
+<!-- ========================================================
+     MODAL : AJOUTER / MODIFIER UN LIVRE
+======================================================== -->
+<div id="modalOverlay" class="modal-overlay hidden">
+    <div class="modal">
+        <div class="modal-header">
+            <h2 id="modalTitle">Ajouter un livre</h2>
+            <button class="modal-close" id="btnCloseModal">✕</button>
+        </div>
+        <form id="bookForm" class="book-form" novalidate>
+            <!-- id caché pour savoir si on est en mode édition -->
+            <input type="hidden" id="bookId">
+
+            <div class="form-group">
+                <label for="title">Titre <span class="required">*</span></label>
+                <input type="text" id="title" placeholder="Ex: Le Petit Prince" required>
+                <span class="form-error" id="errTitle"></span>
+            </div>
+            <div class="form-group">
+                <label for="author">Auteur <span class="required">*</span></label>
+                <input type="text" id="author" placeholder="Ex: Antoine de Saint-Exupéry" required>
+                <span class="form-error" id="errAuthor"></span>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="genre">Genre <span class="required">*</span></label>
+                    <input type="text" id="genre" placeholder="Ex: Roman" required>
+                    <span class="form-error" id="errGenre"></span>
+                </div>
+                <div class="form-group">
+                    <label for="year">Année <span class="required">*</span></label>
+                    <input type="number" id="year" placeholder="Ex: 1943" min="1000" max="2099" required>
+                    <span class="form-error" id="errYear"></span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="toggle-label">
+                    <input type="checkbox" id="available" checked>
+                    <span class="toggle-text">Disponible en bibliothèque</span>
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-ghost" id="btnCancelForm">Annuler</button>
+                <button type="submit" class="btn btn-primary" id="btnSubmitForm">Enregistrer</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ========================================================
+     MODAL : CONFIRMATION SUPPRESSION
+======================================================== -->
+<div id="confirmOverlay" class="modal-overlay hidden">
+    <div class="modal modal-sm">
+        <div class="modal-header">
+            <h2>Confirmer la suppression</h2>
+        </div>
+        <p class="confirm-text">Voulez-vous vraiment supprimer <strong id="deleteTitle"></strong> ?<br>Cette action est irréversible.</p>
+        <div class="form-actions">
+            <button class="btn btn-ghost" id="btnCancelDelete">Annuler</button>
+            <button class="btn btn-danger" id="btnConfirmDelete">Supprimer</button>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================================
+     SECTION TESTS API (Phase 8)
+======================================================== -->
+<section class="api-tester">
+    <div class="api-tester-inner">
+        <h2>🧪 Testeur d'API intégré</h2>
+        <p class="api-desc">Simule les requêtes Postman/curl directement dans le navigateur.</p>
+        <div class="api-controls">
+            <select id="apiMethod" class="filter-select">
+                <option value="GET">GET</option>
+                <option value="POST">POST</option>
+                <option value="PUT">PUT</option>
+                <option value="DELETE">DELETE</option>
+            </select>
+            <input type="text" id="apiUrl" class="filter-input" value="/api/books" style="flex:1">
+            <button class="btn btn-primary" id="btnSendApi">Envoyer</button>
+        </div>
+        <textarea id="apiBody" class="api-body" placeholder='Corps JSON (pour POST/PUT) :&#10;{&#10;  "title": "Dune",&#10;  "author": "Frank Herbert",&#10;  "genre": "Science-fiction",&#10;  "year": 1965,&#10;  "available": 1&#10;}'></textarea>
+        <div class="api-response">
+            <div class="api-response-header">
+                <span>Réponse</span>
+                <span id="apiStatus" class="api-status"></span>
+            </div>
+            <pre id="apiResult" class="api-result">En attente d'une requête…</pre>
+        </div>
+    </div>
+</section>
+
+<footer class="footer">
+    <p>Projet SOA — Master 1 Systèmes d'Information &nbsp;|&nbsp; API REST PHP + MySQL</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

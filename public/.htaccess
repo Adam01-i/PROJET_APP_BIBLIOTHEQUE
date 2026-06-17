@@ -1,0 +1,20 @@
+# ============================================================
+#  public/.htaccess — Réécriture d'URL pour Apache
+#  Redirige toutes les requêtes vers public/index.php
+# ============================================================
+
+# Activer le module de réécriture
+Options -Indexes
+RewriteEngine On
+
+# Si le fichier ou dossier demandé existe physiquement, le servir directement
+# (ex: les fichiers frontend HTML/CSS/JS)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# Sinon, rediriger vers index.php en conservant la query string
+RewriteRule ^(.*)$ index.php [QSA,L]
+
+# Headers de sécurité recommandés
+Header always set X-Content-Type-Options "nosniff"
+Header always set X-Frame-Options "DENY"
