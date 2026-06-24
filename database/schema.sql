@@ -1,12 +1,14 @@
+SET NAMES utf8mb4;
+
 CREATE TABLE books (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
     author VARCHAR(255) NOT NULL,
-    genre VARCHAR(100) NOT NULL DEFAULT 'Non classé',
+    genre VARCHAR(100) NOT NULL,
     year INT NOT NULL,
-    available TINYINT(1) NOT NULL DEFAULT 1,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+    available TINYINT(1) DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 INSERT INTO books (title, author, genre, year, available) VALUES
 ('Le Petit Prince','Antoine de Saint-Exupéry','Roman',1943,1),

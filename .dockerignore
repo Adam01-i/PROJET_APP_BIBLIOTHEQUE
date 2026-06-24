@@ -1,0 +1,8 @@
+venv
+.git
+.gitignore
+
+README.md
+SOUTENANCE.md
+
+__pycache__

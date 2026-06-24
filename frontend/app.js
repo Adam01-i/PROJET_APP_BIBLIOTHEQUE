@@ -121,7 +121,6 @@ async function loadBooks() {
   booksGrid.innerHTML = "";
   emptyState.classList.add("hidden");
 
-  // Construire la query string à partir des filtres
   const search = document.getElementById("searchInput").value.trim();
   const genre = document.getElementById("genreFilter").value;
   const available = document.getElementById("availFilter").value;
@@ -134,8 +133,12 @@ async function loadBooks() {
   const url = `${API_BASE}${params.toString() ? "?" + params.toString() : ""}`;
 
   try {
-    // fetch() est la méthode native pour faire des requêtes HTTP en JS
     const response = await fetch(url);
+
+    if (!response.ok) {
+      throw new Error(`Erreur HTTP ${response.status}`);
+    }
+
     const data = await response.json();
 
     loading.classList.add("hidden");
@@ -153,11 +156,10 @@ async function loadBooks() {
       return;
     }
 
-    // Construire le HTML de chaque carte et l'injecter dans la grille
     booksGrid.innerHTML = books.map(buildBookCard).join("");
   } catch (err) {
     loading.classList.add("hidden");
-    showToast("Impossible de contacter l'API. Serveur démarré ?", "error");
+    showToast("Impossible de contacter l'API.", "error");
     console.error(err);
   }
 }

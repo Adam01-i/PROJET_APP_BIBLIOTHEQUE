@@ -1,0 +1,73 @@
+services:
+
+  # ============================================================
+  #  MySQL — base de données
+  # ============================================================
+  mysql:
+    image: mysql:8.4
+    container_name: shop-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE:      ${DB_NAME:-shop_db}
+      # Création automatique d'un utilisateur applicatif (pas root)
+      # MySQL crée cet utilisateur au premier démarrage du conteneur
+      MYSQL_USER:          ${DB_USER:-adam}
+      MYSQL_PASSWORD:      ${DB_PASSWORD:-123}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    # Vérifie que MySQL répond avant de considérer le service "prêt"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD:-root}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - bibliotheque-net
+
+  # ============================================================
+  #  API — backend PHP
+  # ============================================================
+  api:
+    build: .
+    container_name: bibliotheque-api
+    env_file:
+      - .env
+    environment:
+      DB_HOST:     mysql          # nom du service Docker, PAS localhost
+      DB_NAME:     ${DB_NAME:-shop_db}
+      DB_USER:     ${DB_USER:-adam}
+      DB_PASSWORD: ${DB_PASSWORD:-123}
+      DB_CHARSET:  utf8mb4
+    ports:
+      - "8000:80"
+    depends_on:
+      mysql:
+        condition: service_healthy   # attend que MySQL soit VRAIMENT prêt
+    volumes:
+      - .:/var/www/html
+    networks:
+      - bibliotheque-net
+
+  # ============================================================
+  #  Frontend — Nginx statique
+  # ============================================================
+  frontend:
+    build: ./frontend
+    container_name: bibliotheque-frontend
+    ports:
+      - "8082:80"
+    depends_on:
+      - api
+    networks:
+      - bibliotheque-net
+
+volumes:
+  mysql_data:
+
+networks:
+  bibliotheque-net:
+    driver: bridge
