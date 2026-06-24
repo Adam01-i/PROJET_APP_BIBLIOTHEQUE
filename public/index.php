@@ -10,7 +10,7 @@ ini_set('display_errors', '1');
 // ------------------------------------------------------------
 // CORS : à envoyer AVANT toute sortie
 // ------------------------------------------------------------
-header("Access-Control-Allow-Origin: http://localhost:8082");
+header("Access-Control-Allow-Origin: http://localhost:8083");
 header("Access-Control-Allow-Headers: Content-Type, Authorization");
 header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
 

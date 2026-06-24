@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bibliothèque — API REST</title>
+    <title>Bibliothèque — Plateforme</title>
     <link rel="stylesheet" href="style.css">
-    <!-- Google Fonts : Playfair Display (titres) + DM Sans (corps) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 </head>
@@ -18,11 +17,23 @@
     <div class="header-inner">
         <div class="logo">
             <span class="logo-icon">📚</span>
-            <h1>Bibliothèque <span>REST API</span></h1>
+            <h1>Bibliothèque <span>Plateforme</span></h1>
         </div>
         <div class="header-meta">
             <span id="bookCount">0 livre(s)</span>
-            <button class="btn btn-primary" id="btnOpenAdd">+ Ajouter un livre</button>
+
+            <!-- Visible seulement si non connecté -->
+            <button class="btn btn-outline" id="btnOpenLogin">Se connecter</button>
+
+            <!-- Visible seulement si connecté (caché par défaut) -->
+            <div class="user-pill hidden" id="userPill">
+                <span class="user-pill-name" id="userPillName"></span>
+                <span class="badge badge-role" id="userPillRole"></span>
+                <button class="btn btn-ghost btn-sm" id="btnLogout">Déconnexion</button>
+            </div>
+
+            <!-- Visible seulement pour un admin connecté -->
+            <button class="btn btn-primary hidden" id="btnOpenAdd">+ Ajouter un livre</button>
         </div>
     </div>
 </header>
@@ -33,13 +44,8 @@
 <section class="filters-bar">
     <div class="filters-inner">
         <input type="text" id="searchInput" placeholder="🔍 Rechercher titre ou auteur…" class="filter-input">
-        <select id="genreFilter" class="filter-select">
-            <option value="">Tous les genres</option>
-            <option value="Roman">Roman</option>
-            <option value="Science-fiction">Science-fiction</option>
-            <option value="Fantasy">Fantasy</option>
-            <option value="Roman historique">Roman historique</option>
-            <option value="Réalisme magique">Réalisme magique</option>
+        <select id="categoryFilter" class="filter-select">
+            <option value="">Toutes les catégories</option>
         </select>
         <select id="availFilter" class="filter-select">
             <option value="">Toute disponibilité</option>
@@ -68,7 +74,38 @@
 </main>
 
 <!-- ========================================================
-     MODAL : AJOUTER / MODIFIER UN LIVRE
+     MODAL : CONNEXION
+======================================================== -->
+<div id="loginOverlay" class="modal-overlay hidden">
+    <div class="modal modal-sm">
+        <div class="modal-header">
+            <h2>Se connecter</h2>
+            <button class="modal-close" id="btnCloseLogin">✕</button>
+        </div>
+        <form id="loginForm" class="book-form" novalidate>
+            <div class="form-group">
+                <label for="loginEmail">Email</label>
+                <input type="email" id="loginEmail" placeholder="admin@bibliotheque.local" required>
+                <span class="form-error" id="errLoginEmail"></span>
+            </div>
+            <div class="form-group">
+                <label for="loginPassword">Mot de passe</label>
+                <input type="password" id="loginPassword" placeholder="••••••••" required>
+                <span class="form-error" id="errLoginPassword"></span>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-ghost" id="btnCancelLogin">Annuler</button>
+                <button type="submit" class="btn btn-primary" id="btnSubmitLogin">Se connecter</button>
+            </div>
+            <p class="login-hint">
+                Comptes de test : <code>admin@bibliotheque.local</code> / <code>sophie@bibliotheque.local</code>
+            </p>
+        </form>
+    </div>
+</div>
+
+<!-- ========================================================
+     MODAL : AJOUTER / MODIFIER UN LIVRE (admin uniquement)
 ======================================================== -->
 <div id="modalOverlay" class="modal-overlay hidden">
     <div class="modal">
@@ -77,7 +114,6 @@
             <button class="modal-close" id="btnCloseModal">✕</button>
         </div>
         <form id="bookForm" class="book-form" novalidate>
-            <!-- id caché pour savoir si on est en mode édition -->
             <input type="hidden" id="bookId">
 
             <div class="form-group">
@@ -92,9 +128,11 @@
             </div>
             <div class="form-row">
                 <div class="form-group">
-                    <label for="genre">Genre <span class="required">*</span></label>
-                    <input type="text" id="genre" placeholder="Ex: Roman" required>
-                    <span class="form-error" id="errGenre"></span>
+                    <label for="category_id">Catégorie</label>
+                    <select id="category_id">
+                        <option value="">Non classé</option>
+                    </select>
+                    <span class="form-error" id="errCategory"></span>
                 </div>
                 <div class="form-group">
                     <label for="year">Année <span class="required">*</span></label>
@@ -117,7 +155,7 @@
 </div>
 
 <!-- ========================================================
-     MODAL : CONFIRMATION SUPPRESSION
+     MODAL : CONFIRMATION SUPPRESSION (admin uniquement)
 ======================================================== -->
 <div id="confirmOverlay" class="modal-overlay hidden">
     <div class="modal modal-sm">
@@ -132,36 +170,8 @@
     </div>
 </div>
 
-<!-- ========================================================
-     SECTION TESTS API (Phase 8)
-======================================================== -->
-<section class="api-tester">
-    <div class="api-tester-inner">
-        <h2>🧪 Testeur d'API intégré</h2>
-        <p class="api-desc">Simule les requêtes Postman/curl directement dans le navigateur.</p>
-        <div class="api-controls">
-            <select id="apiMethod" class="filter-select">
-                <option value="GET">GET</option>
-                <option value="POST">POST</option>
-                <option value="PUT">PUT</option>
-                <option value="DELETE">DELETE</option>
-            </select>
-            <input type="text" id="apiUrl" class="filter-input" value="/api/books" style="flex:1">
-            <button class="btn btn-primary" id="btnSendApi">Envoyer</button>
-        </div>
-        <textarea id="apiBody" class="api-body" placeholder='Corps JSON (pour POST/PUT) :&#10;{&#10;  "title": "Dune",&#10;  "author": "Frank Herbert",&#10;  "genre": "Science-fiction",&#10;  "year": 1965,&#10;  "available": 1&#10;}'></textarea>
-        <div class="api-response">
-            <div class="api-response-header">
-                <span>Réponse</span>
-                <span id="apiStatus" class="api-status"></span>
-            </div>
-            <pre id="apiResult" class="api-result">En attente d'une requête…</pre>
-        </div>
-    </div>
-</section>
-
 <footer class="footer">
-    <p>Projet SOA — Master 1 Systèmes d'Information &nbsp;|&nbsp; API REST PHP + MySQL</p>
+    <p>Plateforme de gestion de bibliothèque — Master 1 Systèmes d'Information</p>
 </footer>
 
 <script src="app.js"></script>
