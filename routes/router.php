@@ -1,137 +1,163 @@
 <?php
 // ============================================================
-//  PHASE 7 : routes/router.php
-//  Routeur PHP — analyse l'URI et la méthode HTTP,
-//  puis dispatche vers le bon contrôleur
+//  routes/router.php  (V2)
+//  Routeur étendu : books, auth, loans, categories
 // ============================================================
 
 require_once __DIR__ . '/../controllers/BookController.php';
+require_once __DIR__ . '/../controllers/AuthController.php';
+require_once __DIR__ . '/../controllers/LoanController.php';
+require_once __DIR__ . '/../controllers/CategoryController.php';
 
-/**
- * Classe Router
- *
- * Principe de fonctionnement :
- *  1. Extraire la méthode HTTP (GET, POST, PUT, DELETE)
- *  2. Nettoyer et parser l'URI demandée
- *  3. Faire correspondre l'URI à un pattern
- *  4. Appeler la méthode du contrôleur appropriée
- */
 class Router
 {
-    private string $method; // Méthode HTTP : GET, POST, PUT, DELETE, OPTIONS
-    private string $uri;    // URI nettoyée, ex: /api/books ou /api/books/5
+    private string $method;
+    private string $uri;
 
     public function __construct()
     {
-        // $_SERVER['REQUEST_METHOD'] = méthode HTTP utilisée par le client
         $this->method = $_SERVER['REQUEST_METHOD'];
-
-        // $_SERVER['REQUEST_URI'] peut contenir la query string (?foo=bar)
-        // parse_url(..., PHP_URL_PATH) extrait uniquement le chemin
-        $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-
-        // Supprimer les slashes de fin pour normaliser (/api/books/ → /api/books)
-        $this->uri = rtrim($path, '/');
+        $path         = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+        $this->uri    = rtrim($path, '/');
     }
 
-    /**
-     * Point d'entrée du routeur : analyse l'URI et dispatche
-     */
     public function dispatch(): void
     {
-        $controller = new BookController();
-
-        // ⭐ ROUTE HOME / API ROOT
-        if ($this->uri === '' || $this->uri === '/') {
-            header('Content-Type: application/json; charset=utf-8');
-            echo json_encode([
-                'success' => true,
-                'message' => 'API Bibliothèque active 🚀',
-                'endpoints' => [
-                    'GET /api/books',
-                    'POST /api/books',
-                    'GET /api/books/{id}',
-                    'PUT /api/books/{id}',
-                    'DELETE /api/books/{id}'
-                ]
-            ]);
+        if ($this->method === 'OPTIONS') {
+            http_response_code(200);
             exit;
         }
 
-        // OPTIONS CORS
-        if ($this->method === 'OPTIONS') {
-            $controller->options();
+        // ============================================================
+        //  AUTH
+        // ============================================================
+        if ($this->uri === '/api/auth/login' && $this->method === 'POST') {
+            (new AuthController())->login();
             return;
         }
-        
-        // ---- Pattern 1 : /api/books (sans ID) ----
-        // Correspond à GET /api/books et POST /api/books
+
+        if ($this->uri === '/api/auth/register' && $this->method === 'POST') {
+            (new AuthController())->register();
+            return;
+        }
+
+        if ($this->uri === '/api/auth/me' && $this->method === 'GET') {
+            (new AuthController())->me();
+            return;
+        }
+
+        // ============================================================
+        //  LOANS
+        // ============================================================
+        if ($this->uri === '/api/loans/borrow' && $this->method === 'POST') {
+            (new LoanController())->borrow();
+            return;
+        }
+
+        if ($this->uri === '/api/loans/return' && $this->method === 'POST') {
+            (new LoanController())->returnBook();
+            return;
+        }
+
+        if ($this->uri === '/api/loans' && $this->method === 'GET') {
+            (new LoanController())->getAll();
+            return;
+        }
+
+        // ============================================================
+        //  CATEGORIES
+        // ============================================================
+        if ($this->uri === '/api/categories') {
+            $controller = new CategoryController();
+            switch ($this->method) {
+                case 'GET':  $controller->getAll(); return;
+                case 'POST': $controller->create();  return;
+                default:     $this->methodNotAllowed(); return;
+            }
+        }
+
+        if (preg_match('#^/api/categories/(\d+)$#', $this->uri, $matches)) {
+            $id         = (int) $matches[1];
+            $controller = new CategoryController();
+            switch ($this->method) {
+                case 'GET':    $controller->getOne($id);  return;
+                case 'PUT':    $controller->update($id);  return;
+                case 'DELETE': $controller->delete($id);  return;
+                default:       $this->methodNotAllowed(); return;
+            }
+        }
+
+        // ============================================================
+        //  BOOKS
+        // ============================================================
         if ($this->uri === '/api/books') {
+            $controller = new BookController();
             switch ($this->method) {
-                case 'GET':
-                    $controller->getAll();
-                    break;
-                case 'POST':
-                    $controller->create();
-                    break;
-                default:
-                    $this->methodNotAllowed();
+                case 'GET':  $controller->getAll(); return;
+                case 'POST': $controller->create();  return;
+                default:     $this->methodNotAllowed(); return;
             }
-            return;
         }
 
-        // ---- Pattern 2 : /api/books/{id} (avec ID numérique) ----
-        // preg_match() teste l'URI avec une expression régulière
-        // \d+ = un ou plusieurs chiffres
-        // Les parenthèses capturent l'ID dans $matches[1]
         if (preg_match('#^/api/books/(\d+)$#', $this->uri, $matches)) {
-            $id = (int) $matches[1]; // Convertir l'ID en entier
-
+            $id         = (int) $matches[1];
+            $controller = new BookController();
             switch ($this->method) {
-                case 'GET':
-                    $controller->getOne($id);
-                    break;
-                case 'PUT':
-                    $controller->update($id);
-                    break;
-                case 'DELETE':
-                    $controller->delete($id);
-                    break;
-                default:
-                    $this->methodNotAllowed();
+                case 'GET':    $controller->getOne($id);  return;
+                case 'PUT':    $controller->update($id);  return;
+                case 'DELETE': $controller->delete($id);  return;
+                default:       $this->methodNotAllowed(); return;
             }
+        }
+
+        // ============================================================
+        //  RACINE — info API
+        // ============================================================
+        if ($this->uri === '' || $this->uri === '/') {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode([
+                'success'   => true,
+                'message'   => 'API Bibliothèque V2 active 🚀',
+                'endpoints' => [
+                    'POST /api/auth/login',
+                    'POST /api/auth/register',
+                    'GET  /api/auth/me',
+                    'GET  /api/books',
+                    'GET  /api/books/{id}',
+                    'POST /api/books          (admin)',
+                    'PUT  /api/books/{id}     (admin)',
+                    'DELETE /api/books/{id}   (admin)',
+                    'GET  /api/categories',
+                    'POST /api/categories     (admin)',
+                    'GET  /api/loans          (auth)',
+                    'POST /api/loans/borrow   (auth)',
+                    'POST /api/loans/return   (auth)',
+                ]
+            ], JSON_UNESCAPED_UNICODE);
             return;
         }
 
-        // ---- Aucun pattern trouvé ----
         $this->notFound();
     }
 
-    /**
-     * 404 Not Found — L'URI ne correspond à aucune route
-     */
     private function notFound(): void
     {
         header('Content-Type: application/json; charset=utf-8');
         http_response_code(404);
         echo json_encode([
             'success' => false,
-            'message' => "Route '{$this->uri}' introuvable.",
-            'hint' => 'Routes disponibles : GET|POST /api/books | GET|PUT|DELETE /api/books/{id}'
+            'message' => "Route '{$this->uri}' introuvable."
         ], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
-    /**
-     * 405 Method Not Allowed — L'URI existe mais la méthode HTTP ne convient pas
-     */
     private function methodNotAllowed(): void
     {
         header('Content-Type: application/json; charset=utf-8');
         http_response_code(405);
         echo json_encode([
             'success' => false,
-            'message' => "Méthode HTTP '{$this->method}' non autorisée sur '{$this->uri}'."
+            'message' => "Méthode '{$this->method}' non autorisée sur '{$this->uri}'."
         ], JSON_UNESCAPED_UNICODE);
         exit;
     }

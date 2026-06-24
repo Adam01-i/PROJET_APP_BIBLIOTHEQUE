@@ -37,16 +37,18 @@ services:
     env_file:
       - .env
     environment:
-      DB_HOST:     mysql          # nom du service Docker, PAS localhost
-      DB_NAME:     ${DB_NAME:-shop_db}
-      DB_USER:     ${DB_USER:-adam}
+      DB_HOST: mysql
+      DB_NAME: ${DB_NAME:-shop_db}
+      DB_USER: ${DB_USER:-adam}
       DB_PASSWORD: ${DB_PASSWORD:-123}
-      DB_CHARSET:  utf8mb4
+      DB_CHARSET: utf8mb4
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRY: ${JWT_EXPIRY:-3600}
     ports:
       - "8000:80"
     depends_on:
       mysql:
-        condition: service_healthy   # attend que MySQL soit VRAIMENT prêt
+        condition: service_healthy
     volumes:
       - .:/var/www/html
     networks:
