@@ -1,10 +1,6 @@
 <?php
 // ============================================================
-//  controllers/LoanController.php
-//  Endpoints :
-//    POST /api/loans/borrow   (emprunter)
-//    POST /api/loans/return   (retourner)
-//    GET  /api/loans          (lister, avec filtres)
+//  controllers/LoanController.php  (V3 — correctif sécurité retour)
 // ============================================================
 
 require_once __DIR__ . '/../services/LoanService.php';
@@ -35,12 +31,6 @@ class LoanController
         return (json_last_error() === JSON_ERROR_NONE && is_array($data)) ? $data : null;
     }
 
-    /**
-     * POST /api/loans/borrow
-     * Body : { "book_id": 6 }
-     * Protégé : tout utilisateur authentifié (admin ou membre)
-     * peut emprunter pour lui-même.
-     */
     public function borrow(): void
     {
         $payload = AuthMiddleware::handle();
@@ -50,21 +40,15 @@ class LoanController
             $this->sendResponse(['success' => false, 'message' => 'book_id requis.'], 400);
         }
 
-        // $payload['sub'] = l'ID de l'utilisateur authentifié, extrait
-        // du token JWT — on ne fait jamais confiance à un user_id
-        // envoyé dans le body : ce serait laisser n'importe qui
-        // emprunter "au nom" de quelqu'un d'autre.
         $result = $this->service->borrowBook((int) $data['book_id'], (int) $payload['sub']);
-
         $this->sendResponse($result, $result['success'] ? 201 : 409);
     }
 
     /**
      * POST /api/loans/return
-     * Body : { "book_id": 6 }
-     * Protégé : un membre peut retourner un livre qu'il a emprunté ;
-     * un admin peut retourner n'importe quel livre (ex: retour en
-     * personne à l'accueil, traité par le bibliothécaire admin).
+     * CORRECTIF V3 : transmet désormais le rôle de l'appelant au
+     * service, pour que celui-ci applique la bonne règle de propriété
+     * (membre = ses propres emprunts uniquement, admin = tous).
      */
     public function returnBook(): void
     {
@@ -75,18 +59,15 @@ class LoanController
             $this->sendResponse(['success' => false, 'message' => 'book_id requis.'], 400);
         }
 
-        $result = $this->service->returnBook((int) $data['book_id'], (int) $payload['sub']);
+        $result = $this->service->returnBook(
+            (int) $data['book_id'],
+            (int) $payload['sub'],
+            $payload['role'] ?? 'membre'
+        );
 
         $this->sendResponse($result, $result['success'] ? 200 : 409);
     }
 
-    /**
-     * GET /api/loans
-     * Query params : ?status=active|returned, ?user_id=2, ?book_id=6
-     * Protégé : un membre ne voit que SES propres emprunts ; un admin
-     * voit tout (filtre user_id ignoré pour un membre, forcé à son
-     * propre ID).
-     */
     public function getAll(): void
     {
         $payload = AuthMiddleware::handle();
@@ -94,9 +75,6 @@ class LoanController
         $filters = [
             'status'  => $_GET['status']  ?? '',
             'book_id' => $_GET['book_id'] ?? '',
-            // Un membre ne peut JAMAIS lister les emprunts d'un autre :
-            // on ignore le user_id de la query string pour lui et on
-            // force le sien, peu importe ce qu'il a mis dans l'URL.
             'user_id' => $payload['role'] === 'admin'
                 ? ($_GET['user_id'] ?? '')
                 : $payload['sub'],

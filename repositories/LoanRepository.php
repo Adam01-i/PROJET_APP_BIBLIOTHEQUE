@@ -1,7 +1,6 @@
 <?php
 // ============================================================
-//  repositories/LoanRepository.php
-//  Accès aux données de la table "loans"
+//  repositories/LoanRepository.php  (V3 — correctif sécurité retour)
 // ============================================================
 
 require_once __DIR__ . '/AbstractRepository.php';
@@ -24,10 +23,6 @@ class LoanRepository extends AbstractRepository implements RepositoryInterface
         return $loan ?: null;
     }
 
-    /**
-     * Liste les emprunts avec filtres.
-     * @param array $filters Clés possibles : user_id, book_id, status ('active'|'returned')
-     */
     public function findAll(array $filters = []): array
     {
         $sql = "SELECT l.*, b.title AS book_title, u.full_name AS borrower_name
@@ -47,8 +42,6 @@ class LoanRepository extends AbstractRepository implements RepositoryInterface
             $params[':book_id'] = (int) $filters['book_id'];
         }
 
-        // 'active'   = emprunt en cours (pas encore rendu)
-        // 'returned' = emprunt déjà rendu
         if (!empty($filters['status'])) {
             $where[] = $filters['status'] === 'active'
                 ? "l.returned_at IS NULL"
@@ -79,14 +72,9 @@ class LoanRepository extends AbstractRepository implements RepositoryInterface
         return $this->lastInsertId();
     }
 
-    /**
-     * update() existe pour respecter RepositoryInterface, mais en
-     * pratique un emprunt ne se "modifie" pas comme un livre : on
-     * utilise plutôt markAsReturned() ci-dessous, plus explicite.
-     */
     public function update(int $id, array $data): bool
     {
-        $sql = "UPDATE {$this->table} SET due_at = :due_at WHERE id = :id";
+        $sql  = "UPDATE {$this->table} SET due_at = :due_at WHERE id = :id";
         $stmt = $this->query($sql, [':due_at' => $data['due_at'], ':id' => $id]);
         return $stmt->rowCount() > 0;
     }
@@ -98,12 +86,6 @@ class LoanRepository extends AbstractRepository implements RepositoryInterface
         return $stmt->rowCount() > 0;
     }
 
-    /**
-     * Marque un emprunt comme rendu (returned_at = maintenant).
-     * Méthode dédiée et explicite plutôt que de passer par update()
-     * générique — "rendre un livre" est une action métier précise,
-     * pas une modification arbitraire de champs.
-     */
     public function markAsReturned(int $loanId): bool
     {
         $sql  = "UPDATE {$this->table} SET returned_at = NOW() WHERE id = :id AND returned_at IS NULL";
@@ -111,11 +93,6 @@ class LoanRepository extends AbstractRepository implements RepositoryInterface
         return $stmt->rowCount() > 0;
     }
 
-    /**
-     * Vérifie si un livre a un emprunt actif (non rendu).
-     * Utilisé par LoanService AVANT de créer un nouvel emprunt,
-     * pour éviter qu'un même livre soit "emprunté" deux fois.
-     */
     public function hasActiveLoan(int $bookId): bool
     {
         $sql  = "SELECT COUNT(*) AS count FROM {$this->table}
@@ -125,7 +102,11 @@ class LoanRepository extends AbstractRepository implements RepositoryInterface
     }
 
     /**
-     * Trouve l'emprunt actif d'un livre donné (pour le retourner).
+     * Trouve l'emprunt actif d'un livre donné, peu importe qui l'a
+     * emprunté. Utilisée en interne par LoanService UNIQUEMENT pour
+     * vérifier l'existence d'un emprunt — JAMAIS pour autoriser un
+     * retour sans vérifier le propriétaire (voir findActiveLoanForBookAndUser
+     * ci-dessous, qui est la méthode à utiliser pour ça).
      */
     public function findActiveLoanForBook(int $bookId): ?array
     {
@@ -138,9 +119,28 @@ class LoanRepository extends AbstractRepository implements RepositoryInterface
     }
 
     /**
-     * Statistiques globales pour le dashboard :
-     * total d'emprunts, emprunts actifs, emprunts en retard.
+     * NOUVEAU (correctif V3) — Trouve l'emprunt actif d'un livre,
+     * UNIQUEMENT s'il appartient à l'utilisateur donné.
+     *
+     * Pourquoi cette méthode est indispensable :
+     * findActiveLoanForBook() seule ne suffit pas pour autoriser un
+     * retour, car elle ne vérifie pas QUI a emprunté. Sans ce filtre
+     * supplémentaire, n'importe quel membre authentifié pourrait
+     * appeler POST /api/loans/return avec le book_id de n'importe
+     * quel autre livre emprunté par quelqu'un d'autre, et le faire
+     * "rendre" à sa place — un membre malveillant pourrait ainsi
+     * perturber le suivi des emprunts d'autrui.
      */
+    public function findActiveLoanForBookAndUser(int $bookId, int $userId): ?array
+    {
+        $sql  = "SELECT * FROM {$this->table}
+                  WHERE book_id = :book_id AND user_id = :user_id AND returned_at IS NULL
+                  LIMIT 1";
+        $stmt = $this->query($sql, [':book_id' => $bookId, ':user_id' => $userId]);
+        $loan = $stmt->fetch();
+        return $loan ?: null;
+    }
+
     public function getStats(): array
     {
         $sql = "SELECT

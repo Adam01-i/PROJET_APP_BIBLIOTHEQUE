@@ -1,54 +1,112 @@
 // ============================================================
-//  app.js — Frontend JavaScript V2
-//  Authentification JWT + rôles + emprunt/retour
+//  app.js — Frontend JavaScript V3
+//  Correctifs : apiFetch centralisé, logique Retourner basée sur
+//  la propriété réelle de l'emprunt, /auth/me robuste, déconnexion
+//  automatique sur 401.
 // ============================================================
 
-// ---- Configuration ----
 const API_BASE = "http://localhost:8000/api";
 
 // ---- État de l'application ----
-let books      = [];
-let categories = [];
-let editingId   = null;
-let deleteTarget = null;
+let books          = [];
+let categories      = [];
+let activeLoans      = [];   // Emprunts actifs, chargés pour TOUT utilisateur connecté
+let editingId          = null;
+let deleteTarget         = null;
 
-// État d'authentification. currentUser = null si non connecté.
-// currentToken stocké en localStorage : survit au rechargement de
-// la page, au prix d'une exposition au vol via une faille XSS —
-// compromis assumé, classique pour ce type de projet, documenté
-// dans le README plutôt que caché.
 let currentUser  = null;
 let currentToken = localStorage.getItem('jwt_token') || null;
 
 // ---- Sélecteurs DOM ----
-const booksGrid    = document.getElementById("booksGrid");
-const loading       = document.getElementById("loading");
-const emptyState     = document.getElementById("emptyState");
-const bookCount       = document.getElementById("bookCount");
-const toast            = document.getElementById("toast");
-const categoryFilter    = document.getElementById("categoryFilter");
-const categorySelect     = document.getElementById("category_id");
+const booksGrid       = document.getElementById("booksGrid");
+const loading           = document.getElementById("loading");
+const emptyState          = document.getElementById("emptyState");
+const bookCount             = document.getElementById("bookCount");
+const toast                   = document.getElementById("toast");
+const categoryFilter           = document.getElementById("categoryFilter");
+const categorySelect             = document.getElementById("category_id");
 
-// Auth UI
 const btnOpenLogin = document.getElementById("btnOpenLogin");
-const userPill      = document.getElementById("userPill");
-const userPillName   = document.getElementById("userPillName");
-const userPillRole    = document.getElementById("userPillRole");
-const btnLogout         = document.getElementById("btnLogout");
-const btnOpenAdd          = document.getElementById("btnOpenAdd");
+const userPill       = document.getElementById("userPill");
+const userPillName     = document.getElementById("userPillName");
+const userPillRole       = document.getElementById("userPillRole");
+const btnLogout            = document.getElementById("btnLogout");
+const btnOpenAdd             = document.getElementById("btnOpenAdd");
 
 const loginOverlay = document.getElementById("loginOverlay");
-const loginForm      = document.getElementById("loginForm");
+const loginForm       = document.getElementById("loginForm");
 
-// Modal formulaire livre
 const modalOverlay = document.getElementById("modalOverlay");
 const modalTitle      = document.getElementById("modalTitle");
 const bookForm           = document.getElementById("bookForm");
 const bookIdInput          = document.getElementById("bookId");
 
-// Modal suppression
 const confirmOverlay = document.getElementById("confirmOverlay");
 const deleteTitle       = document.getElementById("deleteTitle");
+
+// ============================================================
+//  COUCHE API CENTRALISÉE
+// ============================================================
+
+/**
+ * apiFetch() — point d'entrée UNIQUE pour tous les appels API.
+ *
+ * Centralise :
+ * - l'ajout du header Authorization si un token existe
+ * - le parsing JSON systématique
+ * - la détection des erreurs réseau (fetch qui rejette)
+ * - la détection des 401 -> déconnexion automatique + toast
+ * - la détection des success:false -> retour uniforme
+ *
+ * Toute fonction d'appel API du reste du fichier passe par celle-ci
+ * plutôt que d'appeler fetch() directement — ça évite que chaque
+ * fonction réinvente sa propre gestion d'erreur, avec le risque
+ * d'oublier un cas (ex: oublier de gérer un 401 dans une nouvelle
+ * fonction ajoutée plus tard).
+ *
+ * @param string $path     Chemin relatif à API_BASE (ex: "/books")
+ * @param object $options  Options fetch standard (method, body...)
+ * @returns {Promise<{ok: boolean, status: number, data: object}>}
+ */
+async function apiFetch(path, options = {}) {
+    const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+    if (currentToken) {
+        headers["Authorization"] = `Bearer ${currentToken}`;
+    }
+
+    let response;
+    try {
+        response = await fetch(`${API_BASE}${path}`, { ...options, headers });
+    } catch (networkErr) {
+        // fetch() rejette uniquement sur des erreurs réseau réelles
+        // (serveur injoignable, CORS bloqué, etc.) — pas sur un 4xx/5xx,
+        // qui sont des réponses HTTP valides que fetch() ne fait jamais
+        // échouer automatiquement.
+        return { ok: false, status: 0, data: { success: false, message: "Impossible de contacter le serveur." } };
+    }
+
+    let data;
+    try {
+        data = await response.json();
+    } catch (parseErr) {
+        // Réponse reçue mais pas du JSON valide (ex: page d'erreur HTML
+        // renvoyée par Apache sur un crash PHP non géré).
+        return { ok: false, status: response.status, data: { success: false, message: "Réponse du serveur illisible." } };
+    }
+
+    // 401 = le token est absent, invalide, ou expiré. On nettoie la
+    // session automatiquement plutôt que de laisser l'UI prétendre
+    // que l'utilisateur est toujours connecté alors que le serveur
+    // le rejette désormais sur chaque requête.
+    if (response.status === 401 && currentUser !== null) {
+        clearSession();
+        showToast("Session expirée. Reconnecte-toi.", "error");
+        renderAuthUI();
+        loadBooks();
+    }
+
+    return { ok: response.ok, status: response.status, data };
+}
 
 // ============================================================
 //  UTILITAIRES
@@ -71,17 +129,11 @@ function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, (m) => map[m]);
 }
 
-/**
- * Construit les headers HTTP communs, en ajoutant l'en-tête
- * Authorization SEULEMENT si un token est présent. Évite de
- * répéter cette logique dans chaque fonction d'appel API.
- */
-function authHeaders(extra = {}) {
-    const headers = { "Content-Type": "application/json", ...extra };
-    if (currentToken) {
-        headers["Authorization"] = `Bearer ${currentToken}`;
-    }
-    return headers;
+/** Vide proprement l'état de session, en mémoire ET en localStorage. */
+function clearSession() {
+    currentToken = null;
+    currentUser  = null;
+    localStorage.removeItem('jwt_token');
 }
 
 // ============================================================
@@ -89,9 +141,12 @@ function authHeaders(extra = {}) {
 // ============================================================
 
 /**
- * Tente de restaurer la session depuis le token déjà en
- * localStorage (au chargement de la page). Si le token est
- * expiré ou invalide, /api/auth/me répondra 401 et on nettoie.
+ * Restaure la session depuis le token localStorage au chargement.
+ *
+ * Robuste au fait que /auth/me peut structurellement renvoyer un
+ * objet user différent de /auth/login (ex: full_name absent) : on
+ * fusionne avec des valeurs de repli plutôt que de supposer la
+ * présence de chaque champ.
  */
 async function restoreSession() {
     if (!currentToken) {
@@ -99,35 +154,43 @@ async function restoreSession() {
         return;
     }
 
-    try {
-        const res = await fetch(`${API_BASE}/auth/me`, { headers: authHeaders() });
-        if (!res.ok) throw new Error("Session invalide");
+    const { ok, data } = await apiFetch('/auth/me');
 
-        const data = await res.json();
-        currentUser = data.user;
-    } catch (err) {
-        // Token expiré ou invalide : on nettoie silencieusement,
-        // pas besoin d'alarmer l'utilisateur pour une session qui
-        // a simplement expiré dans le temps.
-        currentToken = null;
-        currentUser  = null;
-        localStorage.removeItem('jwt_token');
+    if (!ok || !data.success) {
+        clearSession();
+        renderAuthUI();
+        return;
     }
 
+    currentUser = normalizeUser(data.user);
     renderAuthUI();
 }
 
+/**
+ * Normalise un objet "user" venant de l'API, qui peut avoir des
+ * formes légèrement différentes selon l'endpoint (/login vs /me).
+ * Garantit que currentUser a toujours les mêmes clés disponibles,
+ * pour que le reste du code n'ait jamais à se demander "est-ce que
+ * full_name existe cette fois-ci ?".
+ */
+function normalizeUser(rawUser) {
+    return {
+        id: rawUser.id,
+        full_name: rawUser.full_name || rawUser.email || 'Utilisateur',
+        email: rawUser.email,
+        role: rawUser.role,
+    };
+}
+
 async function login(email, password) {
-    const res  = await fetch(`${API_BASE}/auth/login`, {
+    const { data } = await apiFetch('/auth/login', {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
     });
-    const data = await res.json();
 
     if (data.success) {
         currentToken = data.token;
-        currentUser  = data.user;
+        currentUser  = normalizeUser(data.user);
         localStorage.setItem('jwt_token', currentToken);
     }
 
@@ -135,20 +198,12 @@ async function login(email, password) {
 }
 
 function logout() {
-    currentToken = null;
-    currentUser  = null;
-    localStorage.removeItem('jwt_token');
+    clearSession();
     renderAuthUI();
     showToast("Déconnecté.", "success");
-    loadBooks(); // recharge sans les actions emprunter/retourner
+    loadBooks();
 }
 
-/**
- * Met à jour l'interface selon l'état d'authentification :
- * - non connecté  -> bouton "Se connecter" visible
- * - connecté membre -> pill utilisateur visible, pas de bouton admin
- * - connecté admin  -> pill utilisateur + bouton "Ajouter un livre"
- */
 function renderAuthUI() {
     const isLoggedIn = currentUser !== null;
     const isAdmin    = isLoggedIn && currentUser.role === 'admin';
@@ -158,26 +213,21 @@ function renderAuthUI() {
     btnOpenAdd.classList.toggle('hidden', !isAdmin);
 
     if (isLoggedIn) {
-        userPillName.textContent = currentUser.full_name || currentUser.email;
+        userPillName.textContent = currentUser.full_name;
         userPillRole.textContent = currentUser.role;
         userPillRole.className   = `badge badge-role role-${currentUser.role}`;
     }
 }
 
 // ============================================================
-//  API CALLS — Catégories
+//  CATÉGORIES
 // ============================================================
 
 async function loadCategories() {
-    try {
-        const res  = await fetch(`${API_BASE}/categories`);
-        const data = await res.json();
-        if (data.success) {
-            categories = data.data;
-            populateCategorySelects();
-        }
-    } catch (err) {
-        console.error("Erreur chargement catégories :", err);
+    const { ok, data } = await apiFetch('/categories');
+    if (ok && data.success) {
+        categories = data.data;
+        populateCategorySelects();
     }
 }
 
@@ -194,7 +244,41 @@ function populateCategorySelects() {
 }
 
 // ============================================================
-//  API CALLS — Livres
+//  EMPRUNTS ACTIFS — chargés pour TOUT utilisateur connecté
+// ============================================================
+
+/**
+ * CORRECTIF V3 : chargé pour n'importe quel utilisateur connecté
+ * (pas seulement admin). Un membre a besoin de savoir si UN emprunt
+ * actif sur un livre donné lui appartient, pour décider d'afficher
+ * "Retourner". Sans cette donnée, impossible de distinguer "ce livre
+ * est emprunté par moi" de "ce livre est emprunté par quelqu'un d'autre".
+ *
+ * Note sur la portée des données renvoyées :
+ * - Pour un membre, /api/loans?status=active est déjà filtré côté
+ *   backend (LoanController::getAll force user_id = lui-même) : il
+ *   ne reçoit QUE ses propres emprunts actifs.
+ * - Pour un admin, la même route renvoie TOUS les emprunts actifs.
+ * Le frontend n'a donc jamais besoin de filtrer davantage : la
+ * portée est déjà correcte selon le rôle, garantie par le backend.
+ */
+async function loadActiveLoans() {
+    if (!currentUser) {
+        activeLoans = [];
+        return;
+    }
+
+    const { ok, data } = await apiFetch('/loans?status=active');
+    activeLoans = (ok && data.success) ? data.data : [];
+}
+
+/** Trouve l'emprunt actif d'un livre donné parmi ceux déjà chargés. */
+function findActiveLoanForBook(bookId) {
+    return activeLoans.find(l => l.book_id === bookId) || null;
+}
+
+// ============================================================
+//  LIVRES
 // ============================================================
 
 async function loadBooks() {
@@ -204,91 +288,81 @@ async function loadBooks() {
 
     const search     = document.getElementById("searchInput").value.trim();
     const categoryId  = categoryFilter.value;
-    const available    = document.getElementById("availFilter").value;
+    const available     = document.getElementById("availFilter").value;
 
     const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (categoryId) params.set("category_id", categoryId);
     if (available !== "") params.set("available", available);
 
-    const url = `${API_BASE}/books${params.toString() ? "?" + params.toString() : ""}`;
+    // Recharge toujours les emprunts actifs en même temps que les
+    // livres : ce sont deux vues de la même réalité (disponibilité),
+    // elles doivent rester synchronisées à chaque rafraîchissement.
+    await loadActiveLoans();
 
-    try {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`);
+    const { ok, data } = await apiFetch(`/books${params.toString() ? "?" + params.toString() : ""}`);
+    loading.classList.add("hidden");
 
-        const data = await response.json();
-        loading.classList.add("hidden");
-
-        if (!data.success) {
-            showToast("Erreur : " + data.message, "error");
-            return;
-        }
-
-        books = data.data;
-        bookCount.textContent = `${data.count} livre(s)`;
-
-        if (books.length === 0) {
-            emptyState.classList.remove("hidden");
-            return;
-        }
-
-        // Si on est connecté, on récupère aussi les emprunts en cours
-        // pour afficher QUI a emprunté chaque livre indisponible.
-        let activeLoansByBook = {};
-        if (currentUser && currentUser.role === 'admin') {
-            activeLoansByBook = await fetchActiveLoansMap();
-        }
-
-        booksGrid.innerHTML = books.map(b => buildBookCard(b, activeLoansByBook)).join("");
-    } catch (err) {
-        loading.classList.add("hidden");
-        showToast("Impossible de contacter l'API.", "error");
-        console.error(err);
+    if (!ok || !data.success) {
+        showToast("Erreur : " + (data.message || "impossible de charger les livres."), "error");
+        return;
     }
+
+    books = data.data;
+    bookCount.textContent = `${data.count} livre(s)`;
+
+    if (books.length === 0) {
+        emptyState.classList.remove("hidden");
+        return;
+    }
+
+    booksGrid.innerHTML = books.map(buildBookCard).join("");
 }
 
 /**
- * Récupère les emprunts actifs et les indexe par book_id, pour
- * un accès O(1) lors de la construction de chaque carte plutôt
- * que de chercher dans un tableau à chaque fois.
+ * Construit la carte d'un livre, avec la logique d'actions corrigée :
+ *
+ * - Non connecté            -> aucune action (juste consultation)
+ * - Connecté, livre dispo   -> bouton "Emprunter"
+ * - Connecté, livre indispo, emprunt = le mien      -> bouton "Retourner"
+ * - Connecté, livre indispo, emprunt = quelqu'un d'autre -> AUCUN
+ *   bouton d'emprunt, juste l'info "emprunté par X" si admin
+ * - Admin -> peut toujours "Retourner" n'importe quel livre indisponible
+ *   (cohérent avec le backend : un admin retourne pour n'importe qui)
  */
-async function fetchActiveLoansMap() {
-    try {
-        const res  = await fetch(`${API_BASE}/loans?status=active`, { headers: authHeaders() });
-        const data = await res.json();
-        if (!data.success) return {};
-
-        const map = {};
-        data.data.forEach(loan => { map[loan.book_id] = loan; });
-        return map;
-    } catch {
-        return {};
-    }
-}
-
-function buildBookCard(book, activeLoansByBook = {}) {
+function buildBookCard(book) {
     const availClass = book.available == 1 ? "badge-available" : "badge-borrowed";
     const availLabel = book.available == 1 ? "✓ Disponible" : "✗ Emprunté";
     const categoryName = book.category_name || "Non classé";
 
-    const loan = activeLoansByBook[book.id];
-    const borrowerLine = loan
+    const isLoggedIn = currentUser !== null;
+    const isAdmin    = isLoggedIn && currentUser.role === 'admin';
+    const loan       = findActiveLoanForBook(book.id);
+    const isMyLoan   = loan !== null && isLoggedIn && loan.user_id === currentUser.id;
+
+    // Ligne d'info "emprunté par" : affichée seulement si on connaît
+    // l'emprunteur (admin voit tout ; un membre ne voit cette ligne
+    // QUE pour son propre emprunt, car activeLoans ne contient déjà
+    // que les emprunts auxquels il a droit de regard côté backend).
+    const borrowerLine = (book.available == 0 && loan)
         ? `<p class="book-borrower">Emprunté par ${escapeHtml(loan.borrower_name)} · retour prévu le ${formatDate(loan.due_at)}</p>`
         : '';
 
-    const isLoggedIn = currentUser !== null;
-    const isAdmin    = isLoggedIn && currentUser.role === 'admin';
-
-    // Actions emprunter/retourner : visibles seulement si connecté.
     let loanAction = '';
     if (isLoggedIn) {
-        loanAction = book.available == 1
-            ? `<button class="btn btn-primary" onclick="handleBorrow(${book.id})">Emprunter</button>`
-            : `<button class="btn btn-outline" onclick="handleReturn(${book.id})">Retourner</button>`;
+        if (book.available == 1) {
+            loanAction = `<button class="btn btn-primary" onclick="handleBorrow(${book.id})">Emprunter</button>`;
+        } else if (isMyLoan || isAdmin) {
+            // Un admin peut retourner n'importe quel emprunt actif ;
+            // un membre seulement le sien (isMyLoan).
+            loanAction = `<button class="btn btn-outline" onclick="handleReturn(${book.id})">Retourner</button>`;
+        }
+        // Cas restant (livre indisponible, emprunté par quelqu'un
+        // d'autre, utilisateur = membre non-admin) : pas de bouton du
+        // tout, volontairement — il n'y a rien que ce membre puisse
+        // légitimement faire sur ce livre tant qu'il est emprunté.
     }
 
-    // Actions admin : modifier/supprimer.
     const adminActions = isAdmin
         ? `<button class="btn btn-icon" title="Modifier" onclick="openEditModal(${book.id})">✏️</button>
            <button class="btn btn-icon" title="Supprimer" onclick="openDeleteConfirm(${book.id}, '${escapeHtml(book.title).replace(/'/g,"\\'")}')">🗑️</button>`
@@ -326,79 +400,55 @@ async function handleBorrow(bookId) {
         return;
     }
 
-    try {
-        const res  = await fetch(`${API_BASE}/loans/borrow`, {
-            method: "POST",
-            headers: authHeaders(),
-            body: JSON.stringify({ book_id: bookId }),
-        });
-        const data = await res.json();
+    const { data } = await apiFetch('/loans/borrow', {
+        method: "POST",
+        body: JSON.stringify({ book_id: bookId }),
+    });
 
-        if (data.success) {
-            showToast(data.message, "success");
-            loadBooks();
-        } else {
-            showToast("Erreur : " + data.message, "error");
-        }
-    } catch (err) {
-        showToast("Erreur réseau.", "error");
+    if (data.success) {
+        showToast(data.message, "success");
+        loadBooks();
+    } else {
+        showToast("Erreur : " + data.message, "error");
     }
 }
 
 async function handleReturn(bookId) {
-    try {
-        const res  = await fetch(`${API_BASE}/loans/return`, {
-            method: "POST",
-            headers: authHeaders(),
-            body: JSON.stringify({ book_id: bookId }),
-        });
-        const data = await res.json();
+    const { data } = await apiFetch('/loans/return', {
+        method: "POST",
+        body: JSON.stringify({ book_id: bookId }),
+    });
 
-        if (data.success) {
-            showToast(data.message, "success");
-            loadBooks();
-        } else {
-            showToast("Erreur : " + data.message, "error");
-        }
-    } catch (err) {
-        showToast("Erreur réseau.", "error");
+    if (data.success) {
+        showToast(data.message, "success");
+        loadBooks();
+    } else {
+        showToast("Erreur : " + data.message, "error");
     }
 }
 
 // ============================================================
-//  CRUD LIVRES (admin) — POST/PUT/DELETE avec header Authorization
+//  CRUD LIVRES (admin)
 // ============================================================
 
 async function fetchBook(id) {
-    const response = await fetch(`${API_BASE}/books/${id}`);
-    const data = await response.json();
-    return data.success ? data.data : null;
+    const { ok, data } = await apiFetch(`/books/${id}`);
+    return (ok && data.success) ? data.data : null;
 }
 
 async function createBook(payload) {
-    const response = await fetch(`${API_BASE}/books`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify(payload),
-    });
-    return await response.json();
+    const { data } = await apiFetch('/books', { method: "POST", body: JSON.stringify(payload) });
+    return data;
 }
 
 async function updateBook(id, payload) {
-    const response = await fetch(`${API_BASE}/books/${id}`, {
-        method: "PUT",
-        headers: authHeaders(),
-        body: JSON.stringify(payload),
-    });
-    return await response.json();
+    const { data } = await apiFetch(`/books/${id}`, { method: "PUT", body: JSON.stringify(payload) });
+    return data;
 }
 
 async function deleteBook(id) {
-    const response = await fetch(`${API_BASE}/books/${id}`, {
-        method: "DELETE",
-        headers: authHeaders(),
-    });
-    return await response.json();
+    const { data } = await apiFetch(`/books/${id}`, { method: "DELETE" });
+    return data;
 }
 
 // ============================================================
@@ -424,22 +474,19 @@ loginForm.addEventListener("submit", async (e) => {
 
     document.getElementById("errLoginEmail").textContent = "";
     document.getElementById("errLoginPassword").textContent = "";
-
     document.getElementById("btnSubmitLogin").textContent = "Connexion…";
 
     try {
         const result = await login(email, password);
 
         if (result.success) {
-            showToast(`Bienvenue, ${result.user.full_name} !`, "success");
+            showToast(`Bienvenue, ${currentUser.full_name} !`, "success");
             closeLoginModal();
             renderAuthUI();
             loadBooks();
         } else {
-            document.getElementById("errLoginPassword").textContent = result.message;
+            document.getElementById("errLoginPassword").textContent = result.message || "Connexion impossible.";
         }
-    } catch (err) {
-        showToast("Erreur réseau.", "error");
     } finally {
         document.getElementById("btnSubmitLogin").textContent = "Se connecter";
     }
@@ -539,8 +586,6 @@ bookForm.addEventListener("submit", async (e) => {
             const errMsg = result.errors ? result.errors.join(", ") : (result.message || "Erreur inconnue.");
             showToast("Erreur : " + errMsg, "error");
         }
-    } catch (err) {
-        showToast("Erreur réseau.", "error");
     } finally {
         document.getElementById("btnSubmitForm").textContent = "Enregistrer";
     }
@@ -564,13 +609,11 @@ document.getElementById("btnConfirmDelete").addEventListener("click", async () =
         confirmOverlay.classList.add("hidden");
 
         if (result.success) {
-            showToast(result.message, "success");
+            showToast(result.message || "Livre supprimé.", "success");
             loadBooks();
         } else {
             showToast("Erreur : " + result.message, "error");
         }
-    } catch (err) {
-        showToast("Erreur réseau.", "error");
     } finally {
         deleteTarget = null;
     }
@@ -617,9 +660,9 @@ document.getElementById("searchInput").addEventListener("keydown", (e) => {
 //  INITIALISATION
 // ============================================================
 async function init() {
-    await restoreSession();   // vérifie le token localStorage, restaure currentUser
-    await loadCategories();   // remplit les <select>
-    await loadBooks();        // affiche les livres (avec ou sans actions selon l'auth)
+    await restoreSession();
+    await loadCategories();
+    await loadBooks();
 }
 
 document.addEventListener("DOMContentLoaded", init);

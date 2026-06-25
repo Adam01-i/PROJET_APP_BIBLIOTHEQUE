@@ -1,36 +1,18 @@
 <?php
 // ============================================================
-//  services/LoanService.php
-//  Logique métier des emprunts : emprunter, retourner
+//  services/LoanService.php  (V3 — correctif sécurité retour)
 // ============================================================
 
 require_once __DIR__ . '/../repositories/LoanRepository.php';
 require_once __DIR__ . '/../repositories/BookRepository.php';
 require_once __DIR__ . '/../repositories/ActivityLogRepository.php';
 
-/**
- * Classe LoanService
- *
- * C'est ici qu'on voit le bénéfice concret de séparer Repository
- * et Service. "Emprunter un livre" implique TROIS opérations qui
- * doivent réussir ou échouer ENSEMBLE :
- *   1. Vérifier que le livre est disponible (lecture)
- *   2. Créer la ligne dans "loans" (écriture)
- *   3. Passer "available" à 0 dans "books" (écriture)
- * + 4. Logger l'action
- *
- * Aucun repository ne devrait connaître les 3 autres repositories
- * — un BookRepository qui modifierait directement "loans" violerait
- * la responsabilité unique. C'est le rôle du SERVICE d'orchestrer
- * plusieurs repositories pour appliquer une règle métier complète.
- */
 class LoanService
 {
     private LoanRepository $loans;
     private BookRepository $books;
     private ActivityLogRepository $logs;
 
-    /** Durée d'emprunt par défaut, en jours. */
     private const DEFAULT_LOAN_DAYS = 14;
 
     public function __construct()
@@ -40,13 +22,6 @@ class LoanService
         $this->logs  = new ActivityLogRepository();
     }
 
-    /**
-     * Emprunte un livre pour un utilisateur.
-     *
-     * @param int $bookId
-     * @param int $userId
-     * @return array ['success' => bool, 'message' => string, 'loan_id' => ?int]
-     */
     public function borrowBook(int $bookId, int $userId): array
     {
         $book = $this->books->find($bookId);
@@ -55,10 +30,6 @@ class LoanService
             return ['success' => false, 'message' => 'Livre introuvable.'];
         }
 
-        // Double vérification de cohérence : le flag "available" ET
-        // l'absence d'emprunt actif doivent être alignés. S'ils ne le
-        // sont pas (ex: incident antérieur), on se fie à l'emprunt
-        // actif réel plutôt qu'au flag, qui pourrait être désynchronisé.
         if (!$book['available'] || $this->loans->hasActiveLoan($bookId)) {
             return ['success' => false, 'message' => 'Ce livre est déjà emprunté.'];
         }
@@ -71,11 +42,6 @@ class LoanService
             'due_at'  => $dueAt,
         ]);
 
-        // Si cette étape échouait après la création du prêt, on aurait
-        // un livre marqué disponible avec un emprunt actif simultané —
-        // incohérence à surveiller. Une vraie transaction SQL
-        // (BEGIN/COMMIT/ROLLBACK) éliminerait ce risque ; limitation
-        // assumée de cette V2, à corriger si le projet évolue encore.
         $this->books->setAvailability($bookId, false);
 
         $this->logs->log(
@@ -95,22 +61,43 @@ class LoanService
     /**
      * Retourne un livre emprunté.
      *
-     * @param int $bookId
-     * @param int $userId ID de l'utilisateur qui effectue le retour (pour le log)
+     * CORRECTIF V3 — Contrôle de propriété :
+     * Un membre ne peut retourner QUE son propre emprunt actif.
+     * Un admin peut retourner n'importe quel emprunt actif (cas
+     * d'usage réel : un membre rend le livre physiquement à l'accueil,
+     * et c'est l'admin/bibliothécaire qui valide le retour dans le
+     * système à sa place).
+     *
+     * @param int    $bookId
+     * @param int    $requesterId   ID de l'utilisateur qui FAIT la requête
+     * @param string $requesterRole Rôle de cet utilisateur ('admin'|'membre')
      */
-    public function returnBook(int $bookId, int $userId): array
+    public function returnBook(int $bookId, int $requesterId, string $requesterRole = 'membre'): array
     {
-        $loan = $this->loans->findActiveLoanForBook($bookId);
+        if ($requesterRole === 'admin') {
+            // Un admin peut traiter le retour de n'importe quel emprunt actif.
+            $loan = $this->loans->findActiveLoanForBook($bookId);
+        } else {
+            // Un membre ne peut retourner QUE ce qu'il a lui-même emprunté.
+            $loan = $this->loans->findActiveLoanForBookAndUser($bookId, $requesterId);
+        }
 
         if ($loan === null) {
-            return ['success' => false, 'message' => 'Aucun emprunt actif trouvé pour ce livre.'];
+            // Message volontairement générique : on ne révèle pas si le
+            // livre est emprunté par quelqu'un d'autre (ce qui aiderait
+            // un membre à savoir qu'il existe un emprunt actif qui n'est
+            // pas le sien, information qui ne lui appartient pas).
+            return [
+                'success' => false,
+                'message' => 'Aucun emprunt actif trouvé pour ce livre à ton nom.'
+            ];
         }
 
         $this->loans->markAsReturned($loan['id']);
         $this->books->setAvailability($bookId, true);
 
         $this->logs->log(
-            $userId,
+            $requesterId,
             'loan_returned',
             "Retour du livre #{$bookId} (emprunt #{$loan['id']})"
         );
@@ -118,18 +105,11 @@ class LoanService
         return ['success' => true, 'message' => 'Livre retourné avec succès.'];
     }
 
-    /**
-     * Liste les emprunts avec filtres (délégation directe au repository
-     * — pas de règle métier supplémentaire nécessaire pour une simple lecture).
-     */
     public function listLoans(array $filters = []): array
     {
         return $this->loans->findAll($filters);
     }
 
-    /**
-     * Statistiques pour le dashboard.
-     */
     public function getStats(): array
     {
         return $this->loans->getStats();
