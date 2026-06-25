@@ -1,7 +1,6 @@
 <?php
 // ============================================================
-//  repositories/UserRepository.php
-//  Accès aux données de la table "users"
+//  repositories/UserRepository.php  (V4 — ajout countByRole)
 // ============================================================
 
 require_once __DIR__ . '/AbstractRepository.php';
@@ -20,16 +19,6 @@ class UserRepository extends AbstractRepository implements RepositoryInterface
         return $user ?: null;
     }
 
-    /**
-     * Trouve un utilisateur par email, AVEC son password_hash.
-     *
-     * Pourquoi une méthode séparée de find() ?
-     * find() ne retourne JAMAIS password_hash (sécurité : on ne
-     * veut pas qu'un hash de mot de passe se retrouve accidentellement
-     * dans une réponse JSON ailleurs dans le code). Seul AuthService,
-     * au moment précis de vérifier un mot de passe, a besoin du hash.
-     * On isole ce besoin dans une méthode explicitement nommée.
-     */
     public function findByEmailWithPassword(string $email): ?array
     {
         $sql  = "SELECT * FROM {$this->table} WHERE email = :email LIMIT 1";
@@ -59,11 +48,6 @@ class UserRepository extends AbstractRepository implements RepositoryInterface
         return $stmt->fetchAll();
     }
 
-    /**
-     * Crée un utilisateur. $data['password_hash'] doit déjà être
-     * haché (jamais de mot de passe en clair ici) — c'est la
-     * responsabilité d'AuthService de hacher avant d'appeler create().
-     */
     public function create(array $data): int
     {
         $sql = "INSERT INTO {$this->table} (full_name, email, password_hash, role)
@@ -103,14 +87,21 @@ class UserRepository extends AbstractRepository implements RepositoryInterface
         return $stmt->rowCount() > 0;
     }
 
-    /**
-     * Vérifie si un email existe déjà (utile pour la validation
-     * d'inscription, avant de violer la contrainte UNIQUE en BDD).
-     */
     public function emailExists(string $email): bool
     {
         $sql  = "SELECT COUNT(*) AS count FROM {$this->table} WHERE email = :email";
         $stmt = $this->query($sql, [':email' => $email]);
         return (int) $stmt->fetch()['count'] > 0;
+    }
+
+    /**
+     * NOUVEAU (V4) — Compte les utilisateurs par rôle, pour le
+     * dashboard admin ("X membres inscrits").
+     */
+    public function countByRole(string $role): int
+    {
+        $sql  = "SELECT COUNT(*) AS count FROM {$this->table} WHERE role = :role";
+        $stmt = $this->query($sql, [':role' => $role]);
+        return (int) $stmt->fetch()['count'];
     }
 }

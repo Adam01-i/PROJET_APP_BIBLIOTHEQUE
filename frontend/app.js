@@ -44,6 +44,18 @@ const bookIdInput          = document.getElementById("bookId");
 const confirmOverlay = document.getElementById("confirmOverlay");
 const deleteTitle       = document.getElementById("deleteTitle");
 
+// Hero / dashboard intégré (nouveaux éléments V4 — n'existaient pas
+// dans les versions précédentes, donc aucun risque de collision avec
+// la logique métier déjà en place)
+const heroBtnLogin       = document.getElementById("heroBtnLogin");
+const heroStatsLabel       = document.getElementById("heroStatsLabel");
+const heroStatTotal          = document.getElementById("heroStatTotal");
+const heroStatAvailable        = document.getElementById("heroStatAvailable");
+const heroStatCategories         = document.getElementById("heroStatCategories");
+const heroStatBorrowed              = document.getElementById("heroStatBorrowed");
+const heroStatsFootnote                = document.getElementById("heroStatsFootnote");
+const bookCountEcho                       = document.getElementById("bookCountEcho");
+
 // ============================================================
 //  COUCHE API CENTRALISÉE
 // ============================================================
@@ -209,6 +221,7 @@ function renderAuthUI() {
     const isAdmin    = isLoggedIn && currentUser.role === 'admin';
 
     btnOpenLogin.classList.toggle('hidden', isLoggedIn);
+    heroBtnLogin.classList.toggle('hidden', isLoggedIn);
     userPill.classList.toggle('hidden', !isLoggedIn);
     btnOpenAdd.classList.toggle('hidden', !isAdmin);
 
@@ -217,6 +230,90 @@ function renderAuthUI() {
         userPillRole.textContent = currentUser.role;
         userPillRole.className   = `badge badge-role role-${currentUser.role}`;
     }
+}
+
+// ============================================================
+//  HERO / DASHBOARD INTÉGRÉ
+// ============================================================
+
+/**
+ * Remplit le bloc stats du hero. Deux sources de données :
+ * - visiteur non connecté : dérivé des livres/catégories déjà
+ *   chargés (pas d'appel API supplémentaire nécessaire)
+ * - utilisateur connecté   : GET /api/dashboard/stats, dont le
+ *   contenu diffère déjà selon le rôle (décidé côté backend)
+ */
+async function renderHeroStats() {
+    if (!currentUser) {
+        renderVisitorStats();
+        return;
+    }
+
+    const { ok, data } = await apiFetch('/dashboard/stats');
+    if (!ok || !data.success) {
+        renderVisitorStats(); // repli silencieux : la page reste utilisable
+        return;
+    }
+
+    if (data.data.scope === 'admin') {
+        renderAdminStats(data.data);
+    } else {
+        renderMemberStats(data.data);
+    }
+}
+
+/** Vue par défaut, pour un visiteur non connecté : stats du catalogue. */
+function renderVisitorStats() {
+    const total     = books.length;
+    const available = books.filter(b => b.available == 1).length;
+
+    heroStatsLabel.textContent = "Le fonds, en un coup d'œil";
+    heroStatTotal.textContent      = total;
+    heroStatAvailable.textContent  = available;
+    heroStatCategories.textContent = categories.length;
+    heroStatBorrowed.textContent   = total - available;
+    heroStatsFootnote.textContent  = "Connectez-vous pour suivre vos propres emprunts.";
+    heroStatsFootnote.classList.remove('is-warning');
+}
+
+/** Vue admin : statistiques globales de la plateforme. */
+function renderAdminStats(stats) {
+    heroStatsLabel.textContent = "Vue d'ensemble — administration";
+    heroStatTotal.textContent      = stats.books.total;
+    heroStatAvailable.textContent  = stats.books.available;
+    heroStatCategories.textContent = stats.top_categories.length
+        ? stats.top_categories[0].name
+        : '—';
+    heroStatBorrowed.textContent   = stats.books.borrowed;
+
+    const overdue = stats.loans.overdue;
+    heroStatsFootnote.textContent = overdue > 0
+        ? `${overdue} emprunt(s) en retard sur ${stats.loans.active} actif(s) · ${stats.members_count} membres inscrits`
+        : `${stats.loans.active} emprunt(s) actif(s) · ${stats.members_count} membres inscrits`;
+    heroStatsFootnote.classList.toggle('is-warning', overdue > 0);
+}
+
+/** Vue membre : statistiques personnelles uniquement. */
+function renderMemberStats(stats) {
+    heroStatsLabel.textContent = "Vos emprunts";
+    heroStatTotal.textContent      = stats.my_loans.total_ever;
+    heroStatAvailable.textContent  = stats.my_loans.active;
+    heroStatCategories.textContent = stats.my_loans.overdue;
+    heroStatBorrowed.textContent   = books.filter(b => b.available == 0).length;
+
+    // Relabel des cartes pour qu'elles aient un sens dans ce contexte
+    // (les 4 emplacements du hero sont réutilisés, mais leur légende
+    // change selon le scope — voir index.html pour les labels statiques
+    // par défaut, remplacés ici dynamiquement)
+    document.querySelectorAll('.hero-stat-label').forEach((el, i) => {
+        const labels = ['Emprunts (historique)', 'En cours', 'En retard', 'Indisponibles au catalogue'];
+        el.textContent = labels[i] ?? el.textContent;
+    });
+
+    heroStatsFootnote.textContent = stats.my_loans.overdue > 0
+        ? `Tu as ${stats.my_loans.overdue} emprunt(s) en retard — pense à les rendre.`
+        : "Tout est à jour, rien en retard.";
+    heroStatsFootnote.classList.toggle('is-warning', stats.my_loans.overdue > 0);
 }
 
 // ============================================================
@@ -310,6 +407,7 @@ async function loadBooks() {
 
     books = data.data;
     bookCount.textContent = `${data.count} livre(s)`;
+    bookCountEcho.textContent = data.count;
 
     if (books.length === 0) {
         emptyState.classList.remove("hidden");
@@ -317,6 +415,7 @@ async function loadBooks() {
     }
 
     booksGrid.innerHTML = books.map(buildBookCard).join("");
+    renderHeroStats();
 }
 
 /**
@@ -624,6 +723,7 @@ document.getElementById("btnConfirmDelete").addEventListener("click", async () =
 // ============================================================
 
 btnOpenLogin.addEventListener("click", openLoginModal);
+heroBtnLogin.addEventListener("click", openLoginModal);
 document.getElementById("btnCloseLogin").addEventListener("click", closeLoginModal);
 document.getElementById("btnCancelLogin").addEventListener("click", closeLoginModal);
 btnLogout.addEventListener("click", logout);

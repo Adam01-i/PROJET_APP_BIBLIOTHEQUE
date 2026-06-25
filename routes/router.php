@@ -1,13 +1,13 @@
 <?php
 // ============================================================
-//  routes/router.php  (V2)
-//  Routeur étendu : books, auth, loans, categories
+//  routes/router.php  (V4 — ajout route dashboard)
 // ============================================================
 
 require_once __DIR__ . '/../controllers/BookController.php';
 require_once __DIR__ . '/../controllers/AuthController.php';
 require_once __DIR__ . '/../controllers/LoanController.php';
 require_once __DIR__ . '/../controllers/CategoryController.php';
+require_once __DIR__ . '/../controllers/DashboardController.php';
 
 class Router
 {
@@ -26,6 +26,14 @@ class Router
         if ($this->method === 'OPTIONS') {
             http_response_code(200);
             exit;
+        }
+
+        // ============================================================
+        //  DASHBOARD
+        // ============================================================
+        if ($this->uri === '/api/dashboard/stats' && $this->method === 'GET') {
+            (new DashboardController())->stats();
+            return;
         }
 
         // ============================================================
@@ -111,17 +119,18 @@ class Router
         }
 
         // ============================================================
-        //  RACINE — info API
+        //  RACINE
         // ============================================================
         if ($this->uri === '' || $this->uri === '/') {
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode([
                 'success'   => true,
-                'message'   => 'API Bibliothèque V2 active 🚀',
+                'message'   => 'API Bibliothèque V4 active 🚀',
                 'endpoints' => [
                     'POST /api/auth/login',
                     'POST /api/auth/register',
                     'GET  /api/auth/me',
+                    'GET  /api/dashboard/stats (auth)',
                     'GET  /api/books',
                     'GET  /api/books/{id}',
                     'POST /api/books          (admin)',
@@ -144,10 +153,7 @@ class Router
     {
         header('Content-Type: application/json; charset=utf-8');
         http_response_code(404);
-        echo json_encode([
-            'success' => false,
-            'message' => "Route '{$this->uri}' introuvable."
-        ], JSON_UNESCAPED_UNICODE);
+        echo json_encode(['success' => false, 'message' => "Route '{$this->uri}' introuvable."], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
@@ -155,10 +161,7 @@ class Router
     {
         header('Content-Type: application/json; charset=utf-8');
         http_response_code(405);
-        echo json_encode([
-            'success' => false,
-            'message' => "Méthode '{$this->method}' non autorisée sur '{$this->uri}'."
-        ], JSON_UNESCAPED_UNICODE);
+        echo json_encode(['success' => false, 'message' => "Méthode '{$this->method}' non autorisée sur '{$this->uri}'."], JSON_UNESCAPED_UNICODE);
         exit;
     }
 }

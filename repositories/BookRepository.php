@@ -1,31 +1,15 @@
 <?php
 // ============================================================
-//  repositories/BookRepository.php
-//  Accès aux données de la table "books" — SQL pur, rien d'autre
+//  repositories/BookRepository.php  (V4 — ajout getStats + getTopCategories)
 // ============================================================
 
 require_once __DIR__ . '/AbstractRepository.php';
 require_once __DIR__ . '/RepositoryInterface.php';
 
-/**
- * Classe BookRepository
- *
- * Différence avec l'ancien models/Book.php :
- * - Plus de validation ici (c'était dans Book::create() avant,
- *   indirectement via le contrôleur). La validation appartient
- *   maintenant à BookService.
- * - Le champ "genre" (VARCHAR libre) devient une jointure vers
- *   "categories" : on récupère category_name via LEFT JOIN.
- * - readOne() est renommé find() pour respecter RepositoryInterface
- *   (cohérence de vocabulaire entre tous les repositories).
- */
 class BookRepository extends AbstractRepository implements RepositoryInterface
 {
     private string $table = 'books';
 
-    /**
-     * Trouve un livre par son ID, avec le nom de sa catégorie.
-     */
     public function find(int $id): ?array
     {
         $sql = "SELECT b.*, c.name AS category_name
@@ -40,11 +24,6 @@ class BookRepository extends AbstractRepository implements RepositoryInterface
         return $book ?: null;
     }
 
-    /**
-     * Liste tous les livres, avec filtres optionnels.
-     *
-     * @param array $filters Clés possibles : category_id, available, search
-     */
     public function findAll(array $filters = []): array
     {
         $sql    = "SELECT b.*, c.name AS category_name
@@ -78,10 +57,6 @@ class BookRepository extends AbstractRepository implements RepositoryInterface
         return $stmt->fetchAll();
     }
 
-    /**
-     * Insère un nouveau livre.
-     * @return int ID du livre créé
-     */
     public function create(array $data): int
     {
         $sql = "INSERT INTO {$this->table} (title, author, category_id, year, available)
@@ -98,9 +73,6 @@ class BookRepository extends AbstractRepository implements RepositoryInterface
         return $this->lastInsertId();
     }
 
-    /**
-     * Met à jour un livre existant.
-     */
     public function update(int $id, array $data): bool
     {
         $sql = "UPDATE {$this->table}
@@ -120,11 +92,6 @@ class BookRepository extends AbstractRepository implements RepositoryInterface
         return $stmt->rowCount() > 0;
     }
 
-    /**
-     * Supprime un livre.
-     * Les emprunts liés (loans) sont supprimés en cascade par la BDD
-     * (ON DELETE CASCADE défini dans le schéma SQL).
-     */
     public function delete(int $id): bool
     {
         $sql  = "DELETE FROM {$this->table} WHERE id = :id";
@@ -132,12 +99,6 @@ class BookRepository extends AbstractRepository implements RepositoryInterface
         return $stmt->rowCount() > 0;
     }
 
-    /**
-     * Met à jour uniquement le champ "available" d'un livre.
-     * Méthode dédiée car appelée fréquemment par LoanService
-     * (emprunter = available 1→0, retourner = available 0→1)
-     * sans avoir besoin de repasser title/author/etc.
-     */
     public function setAvailability(int $id, bool $available): bool
     {
         $sql  = "UPDATE {$this->table} SET available = :available WHERE id = :id";
@@ -146,5 +107,52 @@ class BookRepository extends AbstractRepository implements RepositoryInterface
             ':id'        => $id,
         ]);
         return $stmt->rowCount() > 0;
+    }
+
+    /**
+     * NOUVEAU (V4) — Statistiques globales du catalogue pour le dashboard admin.
+     * Une seule requête SQL avec agrégation conditionnelle (CASE WHEN) plutôt
+     * que 3 requêtes séparées (total, dispo, empruntés) — plus efficace.
+     */
+    public function getStats(): array
+    {
+        $sql = "SELECT
+                    COUNT(*) AS total_books,
+                    SUM(CASE WHEN available = 1 THEN 1 ELSE 0 END) AS available_books,
+                    SUM(CASE WHEN available = 0 THEN 1 ELSE 0 END) AS borrowed_books
+                FROM {$this->table}";
+
+        $stmt = $this->query($sql);
+        $row  = $stmt->fetch();
+
+        return [
+            'total_books'     => (int) $row['total_books'],
+            'available_books' => (int) $row['available_books'],
+            'borrowed_books'  => (int) $row['borrowed_books'],
+        ];
+    }
+
+    /**
+     * NOUVEAU (V4) — Les catégories les plus représentées dans le
+     * catalogue, pour un graphique ou une liste sur le dashboard admin.
+     *
+     * @param int $limit Nombre de catégories à retourner (top N)
+     */
+    public function getTopCategories(int $limit = 3): array
+    {
+        $sql = "SELECT c.name, COUNT(b.id) AS books_count
+                FROM categories c
+                JOIN books b ON b.category_id = c.id
+                GROUP BY c.id, c.name
+                ORDER BY books_count DESC
+                LIMIT :limit";
+
+        // LIMIT avec paramètre nommé nécessite bindValue() en INT explicite
+        // (voir ActivityLogRepository::findRecent pour la même nécessité).
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll();
     }
 }

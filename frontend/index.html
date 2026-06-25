@@ -6,7 +6,7 @@
     <title>Bibliothèque — Plateforme</title>
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body>
 
@@ -39,21 +39,82 @@
 </header>
 
 <!-- ========================================================
-     BARRE DE FILTRES
+     HERO — vitrine + dashboard intégré
+     Statique en HTML/CSS ; les nombres sont peuplés par app.js
+     (#heroStat* / #dashStat*), sans dépendre d'aucun ID existant.
 ======================================================== -->
-<section class="filters-bar">
+<section class="hero">
+    <!-- Motif décoratif : pile de pages ouvertes, évoque un livre
+         sans être une illustration littérale -->
+    <div class="hero-pages" aria-hidden="true">
+        <span class="hero-page hero-page-3"></span>
+        <span class="hero-page hero-page-2"></span>
+        <span class="hero-page hero-page-1"></span>
+    </div>
+
+    <div class="hero-inner">
+        <div class="hero-copy">
+            <p class="hero-eyebrow">Master 1 Systèmes d'Information</p>
+            <h2 class="hero-title">Chaque livre rendu<br>en retrouve un autre.</h2>
+            <p class="hero-subtitle">
+                Empruntez, cataloguez et faites circuler le fonds de la bibliothèque
+                depuis une seule plateforme — pensée pour les lecteurs comme pour
+                celles et ceux qui veillent sur les rayonnages.
+            </p>
+            <div class="hero-actions">
+                <a href="#catalogue" class="btn btn-primary btn-lg">Explorer le catalogue</a>
+                <button class="btn btn-outline btn-lg" id="heroBtnLogin">Se connecter</button>
+            </div>
+        </div>
+
+        <!-- Bloc statistique : contenu remplacé dynamiquement selon
+             l'état (visiteur / membre / admin) par renderHeroStats() -->
+        <aside class="hero-stats" id="heroStats">
+            <p class="hero-stats-label" id="heroStatsLabel">Le fonds, en un coup d'œil</p>
+            <div class="hero-stats-grid" id="heroStatsGrid">
+                <div class="hero-stat">
+                    <span class="hero-stat-value" id="heroStatTotal">—</span>
+                    <span class="hero-stat-label">Livres au catalogue</span>
+                </div>
+                <div class="hero-stat">
+                    <span class="hero-stat-value" id="heroStatAvailable">—</span>
+                    <span class="hero-stat-label">Disponibles aujourd'hui</span>
+                </div>
+                <div class="hero-stat">
+                    <span class="hero-stat-value" id="heroStatCategories">—</span>
+                    <span class="hero-stat-label">Catégories</span>
+                </div>
+                <div class="hero-stat">
+                    <span class="hero-stat-value" id="heroStatBorrowed">—</span>
+                    <span class="hero-stat-label">Actuellement empruntés</span>
+                </div>
+            </div>
+            <p class="hero-stats-footnote" id="heroStatsFootnote"></p>
+        </aside>
+    </div>
+</section>
+
+<!-- ========================================================
+     BARRE DE FILTRES — premium
+======================================================== -->
+<section class="filters-bar" id="catalogue">
     <div class="filters-inner">
-        <input type="text" id="searchInput" placeholder="🔍 Rechercher titre ou auteur…" class="filter-input">
-        <select id="categoryFilter" class="filter-select">
-            <option value="">Toutes les catégories</option>
-        </select>
-        <select id="availFilter" class="filter-select">
-            <option value="">Toute disponibilité</option>
-            <option value="1">Disponible</option>
-            <option value="0">Emprunté</option>
-        </select>
-        <button class="btn btn-outline" id="btnFilter">Filtrer</button>
-        <button class="btn btn-ghost" id="btnReset">Réinitialiser</button>
+        <div class="filters-card">
+            <p class="filters-eyebrow">Rechercher</p>
+            <div class="filters-row">
+                <input type="text" id="searchInput" placeholder="Titre, auteur…" class="filter-input filter-input-main">
+                <select id="categoryFilter" class="filter-select">
+                    <option value="">Toutes les catégories</option>
+                </select>
+                <select id="availFilter" class="filter-select">
+                    <option value="">Toute disponibilité</option>
+                    <option value="1">Disponible</option>
+                    <option value="0">Emprunté</option>
+                </select>
+                <button class="btn btn-primary" id="btnFilter">Rechercher</button>
+                <button class="btn btn-ghost" id="btnReset">Réinitialiser</button>
+            </div>
+        </div>
     </div>
 </section>
 
@@ -63,13 +124,28 @@
 <div id="toast" class="toast hidden"></div>
 
 <!-- ========================================================
-     GRILLE DE LIVRES
+     VUE CATALOGUE + GRILLE DE LIVRES
 ======================================================== -->
 <main class="main-content">
-    <div id="loading" class="loading-state">Chargement…</div>
-    <div id="emptyState" class="empty-state hidden">
-        <p>📭 Aucun livre trouvé.</p>
+    <div class="catalogue-heading">
+        <div>
+            <p class="catalogue-eyebrow">Catalogue</p>
+            <h2 class="catalogue-title">Le fonds de la bibliothèque</h2>
+        </div>
+        <p class="catalogue-count"><span id="bookCountEcho">0</span> résultat(s)</p>
     </div>
+
+    <div id="loading" class="loading-state">
+        <span class="loading-spinner" aria-hidden="true"></span>
+        <p>Ouverture du catalogue…</p>
+    </div>
+
+    <div id="emptyState" class="empty-state hidden">
+        <span class="empty-state-icon" aria-hidden="true">📭</span>
+        <p class="empty-state-title">Aucun livre ne correspond à cette recherche</p>
+        <p class="empty-state-hint">Essayez un autre titre, ou réinitialisez les filtres.</p>
+    </div>
+
     <div id="booksGrid" class="books-grid"></div>
 </main>
 
@@ -79,7 +155,10 @@
 <div id="loginOverlay" class="modal-overlay hidden">
     <div class="modal modal-sm">
         <div class="modal-header">
-            <h2>Se connecter</h2>
+            <div>
+                <p class="modal-eyebrow">Accès lecteur</p>
+                <h2>Se connecter</h2>
+            </div>
             <button class="modal-close" id="btnCloseLogin">✕</button>
         </div>
         <form id="loginForm" class="book-form" novalidate>
@@ -110,7 +189,10 @@
 <div id="modalOverlay" class="modal-overlay hidden">
     <div class="modal">
         <div class="modal-header">
-            <h2 id="modalTitle">Ajouter un livre</h2>
+            <div>
+                <p class="modal-eyebrow">Catalogue</p>
+                <h2 id="modalTitle">Ajouter un livre</h2>
+            </div>
             <button class="modal-close" id="btnCloseModal">✕</button>
         </div>
         <form id="bookForm" class="book-form" novalidate>
@@ -171,7 +253,16 @@
 </div>
 
 <footer class="footer">
-    <p>Plateforme de gestion de bibliothèque — Master 1 Systèmes d'Information</p>
+    <div class="footer-inner">
+        <div class="footer-brand">
+            <span class="logo-icon">📚</span>
+            <div>
+                <p class="footer-name">Bibliothèque Plateforme</p>
+                <p class="footer-baseline">Faire circuler les livres, pas seulement les compter.</p>
+            </div>
+        </div>
+        <p class="footer-context">Projet académique — Master 1 Systèmes d'Information</p>
+    </div>
 </footer>
 
 <script src="app.js"></script>
