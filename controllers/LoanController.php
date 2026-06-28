@@ -26,7 +26,7 @@ class LoanController
 
     private function getJsonBody(): ?array
     {
-        $raw  = file_get_contents('php://input');
+        $raw = file_get_contents('php://input');
         $data = json_decode($raw, true);
         return (json_last_error() === JSON_ERROR_NONE && is_array($data)) ? $data : null;
     }
@@ -35,13 +35,22 @@ class LoanController
     {
         $payload = AuthMiddleware::handle();
 
-        $data = $this->getJsonBody();
-        if ($data === null || empty($data['book_id'])) {
-            $this->sendResponse(['success' => false, 'message' => 'book_id requis.'], 400);
+        $input = json_decode(file_get_contents('php://input'), true);
+
+        if (!isset($input['book_id']) || !is_numeric($input['book_id'])) {
+            $this->sendResponse([
+                'success' => false,
+                'message' => 'book_id invalide ou manquant.'
+            ], 422);
         }
 
-        $result = $this->service->borrowBook((int) $data['book_id'], (int) $payload['sub']);
-        $this->sendResponse($result, $result['success'] ? 201 : 409);
+        $result = $this->service->borrowBook(
+            (int) $input['book_id'],
+            (int) $payload['sub'],
+            $payload['role'] ?? 'membre'
+        );
+
+        $this->sendResponse($result, $result['success'] ? 201 : 400);
     }
 
     /**
@@ -73,7 +82,7 @@ class LoanController
         $payload = AuthMiddleware::handle();
 
         $filters = [
-            'status'  => $_GET['status']  ?? '',
+            'status' => $_GET['status'] ?? '',
             'book_id' => $_GET['book_id'] ?? '',
             'user_id' => $payload['role'] === 'admin'
                 ? ($_GET['user_id'] ?? '')

@@ -19,11 +19,19 @@ class LoanService
     {
         $this->loans = new LoanRepository();
         $this->books = new BookRepository();
-        $this->logs  = new ActivityLogRepository();
+        $this->logs = new ActivityLogRepository();
     }
 
-    public function borrowBook(int $bookId, int $userId): array
+    public function borrowBook(int $bookId, int $userId, string $userRole = 'membre'): array
     {
+        // Règle métier clé : un admin ne peut pas emprunter
+        if ($userRole === 'admin') {
+            return [
+                'success' => false,
+                'message' => "Un administrateur ne peut pas emprunter de livre."
+            ];
+        }
+
         $book = $this->books->find($bookId);
 
         if ($book === null) {
@@ -39,7 +47,7 @@ class LoanService
         $loanId = $this->loans->create([
             'book_id' => $bookId,
             'user_id' => $userId,
-            'due_at'  => $dueAt,
+            'due_at' => $dueAt,
         ]);
 
         $this->books->setAvailability($bookId, false);
@@ -54,7 +62,7 @@ class LoanService
             'success' => true,
             'message' => "Livre emprunté avec succès. Retour prévu le {$dueAt}.",
             'loan_id' => $loanId,
-            'due_at'  => $dueAt,
+            'due_at' => $dueAt,
         ];
     }
 

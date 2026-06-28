@@ -8,53 +8,53 @@
 const API_BASE = "http://localhost:8000/api";
 
 // ---- État de l'application ----
-let books          = [];
-let categories      = [];
-let activeLoans      = [];   // Emprunts actifs, chargés pour TOUT utilisateur connecté
-let editingId          = null;
-let deleteTarget         = null;
+let books = [];
+let categories = [];
+let activeLoans = []; // Emprunts actifs, chargés pour TOUT utilisateur connecté
+let editingId = null;
+let deleteTarget = null;
 
-let currentUser  = null;
-let currentToken = localStorage.getItem('jwt_token') || null;
+let currentUser = null;
+let currentToken = localStorage.getItem("jwt_token") || null;
 
 // ---- Sélecteurs DOM ----
-const booksGrid       = document.getElementById("booksGrid");
-const loading           = document.getElementById("loading");
-const emptyState          = document.getElementById("emptyState");
-const bookCount             = document.getElementById("bookCount");
-const toast                   = document.getElementById("toast");
-const categoryFilter           = document.getElementById("categoryFilter");
-const categorySelect             = document.getElementById("category_id");
+const booksGrid = document.getElementById("booksGrid");
+const loading = document.getElementById("loading");
+const emptyState = document.getElementById("emptyState");
+const bookCount = document.getElementById("bookCount");
+const toast = document.getElementById("toast");
+const categoryFilter = document.getElementById("categoryFilter");
+const categorySelect = document.getElementById("category_id");
 
 const btnOpenLogin = document.getElementById("btnOpenLogin");
-const userPill       = document.getElementById("userPill");
-const userPillName     = document.getElementById("userPillName");
-const userPillRole       = document.getElementById("userPillRole");
-const btnLogout            = document.getElementById("btnLogout");
-const btnOpenAdd             = document.getElementById("btnOpenAdd");
+const userPill = document.getElementById("userPill");
+const userPillName = document.getElementById("userPillName");
+const userPillRole = document.getElementById("userPillRole");
+const btnLogout = document.getElementById("btnLogout");
+const btnOpenAdd = document.getElementById("btnOpenAdd");
 
 const loginOverlay = document.getElementById("loginOverlay");
-const loginForm       = document.getElementById("loginForm");
+const loginForm = document.getElementById("loginForm");
 
 const modalOverlay = document.getElementById("modalOverlay");
-const modalTitle      = document.getElementById("modalTitle");
-const bookForm           = document.getElementById("bookForm");
-const bookIdInput          = document.getElementById("bookId");
+const modalTitle = document.getElementById("modalTitle");
+const bookForm = document.getElementById("bookForm");
+const bookIdInput = document.getElementById("bookId");
 
 const confirmOverlay = document.getElementById("confirmOverlay");
-const deleteTitle       = document.getElementById("deleteTitle");
+const deleteTitle = document.getElementById("deleteTitle");
 
 // Hero / dashboard intégré (nouveaux éléments V4 — n'existaient pas
 // dans les versions précédentes, donc aucun risque de collision avec
 // la logique métier déjà en place)
-const heroBtnLogin       = document.getElementById("heroBtnLogin");
-const heroStatsLabel       = document.getElementById("heroStatsLabel");
-const heroStatTotal          = document.getElementById("heroStatTotal");
-const heroStatAvailable        = document.getElementById("heroStatAvailable");
-const heroStatCategories         = document.getElementById("heroStatCategories");
-const heroStatBorrowed              = document.getElementById("heroStatBorrowed");
-const heroStatsFootnote                = document.getElementById("heroStatsFootnote");
-const bookCountEcho                       = document.getElementById("bookCountEcho");
+const heroBtnLogin = document.getElementById("heroBtnLogin");
+const heroStatsLabel = document.getElementById("heroStatsLabel");
+const heroStatTotal = document.getElementById("heroStatTotal");
+const heroStatAvailable = document.getElementById("heroStatAvailable");
+const heroStatCategories = document.getElementById("heroStatCategories");
+const heroStatBorrowed = document.getElementById("heroStatBorrowed");
+const heroStatsFootnote = document.getElementById("heroStatsFootnote");
+const bookCountEcho = document.getElementById("bookCountEcho");
 
 // ============================================================
 //  COUCHE API CENTRALISÉE
@@ -81,43 +81,54 @@ const bookCountEcho                       = document.getElementById("bookCountEc
  * @returns {Promise<{ok: boolean, status: number, data: object}>}
  */
 async function apiFetch(path, options = {}) {
-    const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
-    if (currentToken) {
-        headers["Authorization"] = `Bearer ${currentToken}`;
-    }
+  const headers = {
+    "Content-Type": "application/json",
+    ...(options.headers || {}),
+  };
+  if (currentToken) {
+    headers["Authorization"] = `Bearer ${currentToken}`;
+  }
 
-    let response;
-    try {
-        response = await fetch(`${API_BASE}${path}`, { ...options, headers });
-    } catch (networkErr) {
-        // fetch() rejette uniquement sur des erreurs réseau réelles
-        // (serveur injoignable, CORS bloqué, etc.) — pas sur un 4xx/5xx,
-        // qui sont des réponses HTTP valides que fetch() ne fait jamais
-        // échouer automatiquement.
-        return { ok: false, status: 0, data: { success: false, message: "Impossible de contacter le serveur." } };
-    }
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  } catch (networkErr) {
+    // fetch() rejette uniquement sur des erreurs réseau réelles
+    // (serveur injoignable, CORS bloqué, etc.) — pas sur un 4xx/5xx,
+    // qui sont des réponses HTTP valides que fetch() ne fait jamais
+    // échouer automatiquement.
+    return {
+      ok: false,
+      status: 0,
+      data: { success: false, message: "Impossible de contacter le serveur." },
+    };
+  }
 
-    let data;
-    try {
-        data = await response.json();
-    } catch (parseErr) {
-        // Réponse reçue mais pas du JSON valide (ex: page d'erreur HTML
-        // renvoyée par Apache sur un crash PHP non géré).
-        return { ok: false, status: response.status, data: { success: false, message: "Réponse du serveur illisible." } };
-    }
+  let data;
+  try {
+    data = await response.json();
+  } catch (parseErr) {
+    // Réponse reçue mais pas du JSON valide (ex: page d'erreur HTML
+    // renvoyée par Apache sur un crash PHP non géré).
+    return {
+      ok: false,
+      status: response.status,
+      data: { success: false, message: "Réponse du serveur illisible." },
+    };
+  }
 
-    // 401 = le token est absent, invalide, ou expiré. On nettoie la
-    // session automatiquement plutôt que de laisser l'UI prétendre
-    // que l'utilisateur est toujours connecté alors que le serveur
-    // le rejette désormais sur chaque requête.
-    if (response.status === 401 && currentUser !== null) {
-        clearSession();
-        showToast("Session expirée. Reconnecte-toi.", "error");
-        renderAuthUI();
-        loadBooks();
-    }
+  // 401 = le token est absent, invalide, ou expiré. On nettoie la
+  // session automatiquement plutôt que de laisser l'UI prétendre
+  // que l'utilisateur est toujours connecté alors que le serveur
+  // le rejette désormais sur chaque requête.
+  if (response.status === 401 && currentUser !== null) {
+    clearSession();
+    showToast("Session expirée. Reconnecte-toi.", "error");
+    renderAuthUI();
+    loadBooks();
+  }
 
-    return { ok: response.ok, status: response.status, data };
+  return { ok: response.ok, status: response.status, data };
 }
 
 // ============================================================
@@ -125,27 +136,39 @@ async function apiFetch(path, options = {}) {
 // ============================================================
 
 function showToast(message, type = "success") {
-    toast.textContent = message;
-    toast.className = `toast ${type}`;
-    setTimeout(() => { toast.className = "toast hidden"; }, 3000);
+  toast.textContent = message;
+  toast.className = `toast ${type}`;
+  setTimeout(() => {
+    toast.className = "toast hidden";
+  }, 3000);
 }
 
 function formatDate(dateStr) {
-    if (!dateStr) return "—";
-    const d = new Date(dateStr);
-    return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
+  if (!dateStr) return "—";
+  const d = new Date(dateStr);
+  return d.toLocaleDateString("fr-FR", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 function escapeHtml(str) {
-    const map = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
-    return String(str).replace(/[&<>"']/g, (m) => map[m]);
+  const map = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  };
+  return String(str).replace(/[&<>"']/g, (m) => map[m]);
 }
 
 /** Vide proprement l'état de session, en mémoire ET en localStorage. */
 function clearSession() {
-    currentToken = null;
-    currentUser  = null;
-    localStorage.removeItem('jwt_token');
+  currentToken = null;
+  currentUser = null;
+  localStorage.removeItem("jwt_token");
 }
 
 // ============================================================
@@ -161,21 +184,21 @@ function clearSession() {
  * présence de chaque champ.
  */
 async function restoreSession() {
-    if (!currentToken) {
-        renderAuthUI();
-        return;
-    }
-
-    const { ok, data } = await apiFetch('/auth/me');
-
-    if (!ok || !data.success) {
-        clearSession();
-        renderAuthUI();
-        return;
-    }
-
-    currentUser = normalizeUser(data.user);
+  if (!currentToken) {
     renderAuthUI();
+    return;
+  }
+
+  const { ok, data } = await apiFetch("/auth/me");
+
+  if (!ok || !data.success) {
+    clearSession();
+    renderAuthUI();
+    return;
+  }
+
+  currentUser = normalizeUser(data.user);
+  renderAuthUI();
 }
 
 /**
@@ -186,50 +209,50 @@ async function restoreSession() {
  * full_name existe cette fois-ci ?".
  */
 function normalizeUser(rawUser) {
-    return {
-        id: rawUser.id,
-        full_name: rawUser.full_name || rawUser.email || 'Utilisateur',
-        email: rawUser.email,
-        role: rawUser.role,
-    };
+  return {
+    id: rawUser.id,
+    full_name: rawUser.full_name || rawUser.email || "Utilisateur",
+    email: rawUser.email,
+    role: rawUser.role,
+  };
 }
 
 async function login(email, password) {
-    const { data } = await apiFetch('/auth/login', {
-        method: "POST",
-        body: JSON.stringify({ email, password }),
-    });
+  const { data } = await apiFetch("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
 
-    if (data.success) {
-        currentToken = data.token;
-        currentUser  = normalizeUser(data.user);
-        localStorage.setItem('jwt_token', currentToken);
-    }
+  if (data.success) {
+    currentToken = data.token;
+    currentUser = normalizeUser(data.user);
+    localStorage.setItem("jwt_token", currentToken);
+  }
 
-    return data;
+  return data;
 }
 
 function logout() {
-    clearSession();
-    renderAuthUI();
-    showToast("Déconnecté.", "success");
-    loadBooks();
+  clearSession();
+  renderAuthUI();
+  showToast("Déconnecté.", "success");
+  loadBooks();
 }
 
 function renderAuthUI() {
-    const isLoggedIn = currentUser !== null;
-    const isAdmin    = isLoggedIn && currentUser.role === 'admin';
+  const isLoggedIn = currentUser !== null;
+  const isAdmin = isLoggedIn && currentUser.role === "admin";
 
-    btnOpenLogin.classList.toggle('hidden', isLoggedIn);
-    heroBtnLogin.classList.toggle('hidden', isLoggedIn);
-    userPill.classList.toggle('hidden', !isLoggedIn);
-    btnOpenAdd.classList.toggle('hidden', !isAdmin);
+  btnOpenLogin.classList.toggle("hidden", isLoggedIn);
+  heroBtnLogin.classList.toggle("hidden", isLoggedIn);
+  userPill.classList.toggle("hidden", !isLoggedIn);
+  btnOpenAdd.classList.toggle("hidden", !isAdmin);
 
-    if (isLoggedIn) {
-        userPillName.textContent = currentUser.full_name;
-        userPillRole.textContent = currentUser.role;
-        userPillRole.className   = `badge badge-role role-${currentUser.role}`;
-    }
+  if (isLoggedIn) {
+    userPillName.textContent = currentUser.full_name;
+    userPillRole.textContent = currentUser.role;
+    userPillRole.className = `badge badge-role role-${currentUser.role}`;
+  }
 }
 
 // ============================================================
@@ -244,76 +267,84 @@ function renderAuthUI() {
  *   contenu diffère déjà selon le rôle (décidé côté backend)
  */
 async function renderHeroStats() {
-    if (!currentUser) {
-        renderVisitorStats();
-        return;
-    }
+  if (!currentUser) {
+    renderVisitorStats();
+    return;
+  }
 
-    const { ok, data } = await apiFetch('/dashboard/stats');
-    if (!ok || !data.success) {
-        renderVisitorStats(); // repli silencieux : la page reste utilisable
-        return;
-    }
+  const { ok, data } = await apiFetch("/dashboard/stats");
+  if (!ok || !data.success) {
+    renderVisitorStats(); // repli silencieux : la page reste utilisable
+    return;
+  }
 
-    if (data.data.scope === 'admin') {
-        renderAdminStats(data.data);
-    } else {
-        renderMemberStats(data.data);
-    }
+  if (data.data.scope === "admin") {
+    renderAdminStats(data.data);
+  } else {
+    renderMemberStats(data.data);
+  }
 }
 
 /** Vue par défaut, pour un visiteur non connecté : stats du catalogue. */
 function renderVisitorStats() {
-    const total     = books.length;
-    const available = books.filter(b => b.available == 1).length;
+  const total = books.length;
+  const available = books.filter((b) => b.available == 1).length;
 
-    heroStatsLabel.textContent = "Le fonds, en un coup d'œil";
-    heroStatTotal.textContent      = total;
-    heroStatAvailable.textContent  = available;
-    heroStatCategories.textContent = categories.length;
-    heroStatBorrowed.textContent   = total - available;
-    heroStatsFootnote.textContent  = "Connectez-vous pour suivre vos propres emprunts.";
-    heroStatsFootnote.classList.remove('is-warning');
+  heroStatsLabel.textContent = "Le fonds, en un coup d'œil";
+  heroStatTotal.textContent = total;
+  heroStatAvailable.textContent = available;
+  heroStatCategories.textContent = categories.length;
+  heroStatBorrowed.textContent = total - available;
+  heroStatsFootnote.textContent =
+    "Connectez-vous pour suivre vos propres emprunts.";
+  heroStatsFootnote.classList.remove("is-warning");
 }
 
 /** Vue admin : statistiques globales de la plateforme. */
 function renderAdminStats(stats) {
-    heroStatsLabel.textContent = "Vue d'ensemble — administration";
-    heroStatTotal.textContent      = stats.books.total;
-    heroStatAvailable.textContent  = stats.books.available;
-    heroStatCategories.textContent = stats.top_categories.length
-        ? stats.top_categories[0].name
-        : '—';
-    heroStatBorrowed.textContent   = stats.books.borrowed;
+  heroStatsLabel.textContent = "Vue d'ensemble — administration";
+  heroStatTotal.textContent = stats.books.total;
+  heroStatAvailable.textContent = stats.books.available;
+  heroStatCategories.textContent = stats.top_categories.length
+    ? stats.top_categories[0].name
+    : "—";
+  heroStatBorrowed.textContent = stats.books.borrowed;
 
-    const overdue = stats.loans.overdue;
-    heroStatsFootnote.textContent = overdue > 0
-        ? `${overdue} emprunt(s) en retard sur ${stats.loans.active} actif(s) · ${stats.members_count} membres inscrits`
-        : `${stats.loans.active} emprunt(s) actif(s) · ${stats.members_count} membres inscrits`;
-    heroStatsFootnote.classList.toggle('is-warning', overdue > 0);
+  const overdue = stats.loans.overdue;
+  heroStatsFootnote.textContent =
+    overdue > 0
+      ? `${overdue} emprunt(s) en retard sur ${stats.loans.active} actif(s) · ${stats.members_count} membres inscrits`
+      : `${stats.loans.active} emprunt(s) actif(s) · ${stats.members_count} membres inscrits`;
+  heroStatsFootnote.classList.toggle("is-warning", overdue > 0);
 }
 
 /** Vue membre : statistiques personnelles uniquement. */
 function renderMemberStats(stats) {
-    heroStatsLabel.textContent = "Vos emprunts";
-    heroStatTotal.textContent      = stats.my_loans.total_ever;
-    heroStatAvailable.textContent  = stats.my_loans.active;
-    heroStatCategories.textContent = stats.my_loans.overdue;
-    heroStatBorrowed.textContent   = books.filter(b => b.available == 0).length;
+  heroStatsLabel.textContent = "Vos emprunts";
+  heroStatTotal.textContent = stats.my_loans.total_ever;
+  heroStatAvailable.textContent = stats.my_loans.active;
+  heroStatCategories.textContent = stats.my_loans.overdue;
+  heroStatBorrowed.textContent = books.filter((b) => b.available == 0).length;
 
-    // Relabel des cartes pour qu'elles aient un sens dans ce contexte
-    // (les 4 emplacements du hero sont réutilisés, mais leur légende
-    // change selon le scope — voir index.html pour les labels statiques
-    // par défaut, remplacés ici dynamiquement)
-    document.querySelectorAll('.hero-stat-label').forEach((el, i) => {
-        const labels = ['Emprunts (historique)', 'En cours', 'En retard', 'Indisponibles au catalogue'];
-        el.textContent = labels[i] ?? el.textContent;
-    });
+  // Relabel des cartes pour qu'elles aient un sens dans ce contexte
+  // (les 4 emplacements du hero sont réutilisés, mais leur légende
+  // change selon le scope — voir index.html pour les labels statiques
+  // par défaut, remplacés ici dynamiquement)
+  document.querySelectorAll(".hero-stat-label").forEach((el, i) => {
+    const labels = [
+      "Emprunts (historique)",
+      "En cours",
+      "En retard",
+      "Indisponibles au catalogue",
+    ];
+    el.textContent = labels[i] ?? el.textContent;
+  });
 
-    heroStatsFootnote.textContent = stats.my_loans.overdue > 0
-        ? `Tu as ${stats.my_loans.overdue} emprunt(s) en retard — pense à les rendre.`
-        : "Tout est à jour, rien en retard.";
-    heroStatsFootnote.classList.toggle('is-warning', stats.my_loans.overdue > 0);
+  heroStatsFootnote.textContent =
+    stats.my_loans.overdue > 0
+      ? `Tu as ${stats.my_loans.overdue} emprunt(s) en retard — pense à les rendre.`
+      : "Tout est à jour, rien en retard.";
+  heroStatsFootnote.classList.toggle("is-warning", stats.my_loans.overdue > 0);
 }
 
 // ============================================================
@@ -321,23 +352,28 @@ function renderMemberStats(stats) {
 // ============================================================
 
 async function loadCategories() {
-    const { ok, data } = await apiFetch('/categories');
-    if (ok && data.success) {
-        categories = data.data;
-        populateCategorySelects();
-    }
+  const { ok, data } = await apiFetch("/categories");
+  if (ok && data.success) {
+    categories = data.data;
+    populateCategorySelects();
+  }
 }
 
 function populateCategorySelects() {
-    const filterOptions = categories
-        .map(c => `<option value="${c.id}">${escapeHtml(c.name)} (${c.books_count})</option>`)
-        .join('');
-    categoryFilter.innerHTML = '<option value="">Toutes les catégories</option>' + filterOptions;
+  const filterOptions = categories
+    .map(
+      (c) =>
+        `<option value="${c.id}">${escapeHtml(c.name)} (${c.books_count})</option>`,
+    )
+    .join("");
+  categoryFilter.innerHTML =
+    '<option value="">Toutes les catégories</option>' + filterOptions;
 
-    const formOptions = categories
-        .map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`)
-        .join('');
-    categorySelect.innerHTML = '<option value="">Non classé</option>' + formOptions;
+  const formOptions = categories
+    .map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`)
+    .join("");
+  categorySelect.innerHTML =
+    '<option value="">Non classé</option>' + formOptions;
 }
 
 // ============================================================
@@ -360,18 +396,18 @@ function populateCategorySelects() {
  * portée est déjà correcte selon le rôle, garantie par le backend.
  */
 async function loadActiveLoans() {
-    if (!currentUser) {
-        activeLoans = [];
-        return;
-    }
+  if (!currentUser) {
+    activeLoans = [];
+    return;
+  }
 
-    const { ok, data } = await apiFetch('/loans?status=active');
-    activeLoans = (ok && data.success) ? data.data : [];
+  const { ok, data } = await apiFetch("/loans?status=active");
+  activeLoans = ok && data.success ? data.data : [];
 }
 
 /** Trouve l'emprunt actif d'un livre donné parmi ceux déjà chargés. */
 function findActiveLoanForBook(bookId) {
-    return activeLoans.find(l => l.book_id === bookId) || null;
+  return activeLoans.find((l) => l.book_id === bookId) || null;
 }
 
 // ============================================================
@@ -379,43 +415,48 @@ function findActiveLoanForBook(bookId) {
 // ============================================================
 
 async function loadBooks() {
-    loading.classList.remove("hidden");
-    booksGrid.innerHTML = "";
-    emptyState.classList.add("hidden");
+  loading.classList.remove("hidden");
+  booksGrid.innerHTML = "";
+  emptyState.classList.add("hidden");
 
-    const search     = document.getElementById("searchInput").value.trim();
-    const categoryId  = categoryFilter.value;
-    const available     = document.getElementById("availFilter").value;
+  const search = document.getElementById("searchInput").value.trim();
+  const categoryId = categoryFilter.value;
+  const available = document.getElementById("availFilter").value;
 
-    const params = new URLSearchParams();
-    if (search) params.set("search", search);
-    if (categoryId) params.set("category_id", categoryId);
-    if (available !== "") params.set("available", available);
+  const params = new URLSearchParams();
+  if (search) params.set("search", search);
+  if (categoryId) params.set("category_id", categoryId);
+  if (available !== "") params.set("available", available);
 
-    // Recharge toujours les emprunts actifs en même temps que les
-    // livres : ce sont deux vues de la même réalité (disponibilité),
-    // elles doivent rester synchronisées à chaque rafraîchissement.
-    await loadActiveLoans();
+  // Recharge toujours les emprunts actifs en même temps que les
+  // livres : ce sont deux vues de la même réalité (disponibilité),
+  // elles doivent rester synchronisées à chaque rafraîchissement.
+  await loadActiveLoans();
 
-    const { ok, data } = await apiFetch(`/books${params.toString() ? "?" + params.toString() : ""}`);
-    loading.classList.add("hidden");
+  const { ok, data } = await apiFetch(
+    `/books${params.toString() ? "?" + params.toString() : ""}`,
+  );
+  loading.classList.add("hidden");
 
-    if (!ok || !data.success) {
-        showToast("Erreur : " + (data.message || "impossible de charger les livres."), "error");
-        return;
-    }
+  if (!ok || !data.success) {
+    showToast(
+      "Erreur : " + (data.message || "impossible de charger les livres."),
+      "error",
+    );
+    return;
+  }
 
-    books = data.data;
-    bookCount.textContent = `${data.count} livre(s)`;
-    bookCountEcho.textContent = data.count;
+  books = data.data;
+  bookCount.textContent = `${data.count} livre(s)`;
+  bookCountEcho.textContent = data.count;
 
-    if (books.length === 0) {
-        emptyState.classList.remove("hidden");
-        return;
-    }
+  if (books.length === 0) {
+    emptyState.classList.remove("hidden");
+    return;
+  }
 
-    booksGrid.innerHTML = books.map(buildBookCard).join("");
-    renderHeroStats();
+  booksGrid.innerHTML = books.map(buildBookCard).join("");
+  renderHeroStats();
 }
 
 /**
@@ -430,44 +471,45 @@ async function loadBooks() {
  *   (cohérent avec le backend : un admin retourne pour n'importe qui)
  */
 function buildBookCard(book) {
-    const availClass = book.available == 1 ? "badge-available" : "badge-borrowed";
-    const availLabel = book.available == 1 ? "✓ Disponible" : "✗ Emprunté";
-    const categoryName = book.category_name || "Non classé";
+  const availClass = book.available == 1 ? "badge-available" : "badge-borrowed";
+  const availLabel = book.available == 1 ? "✓ Disponible" : "✗ Emprunté";
+  const categoryName = book.category_name || "Non classé";
 
-    const isLoggedIn = currentUser !== null;
-    const isAdmin    = isLoggedIn && currentUser.role === 'admin';
-    const loan       = findActiveLoanForBook(book.id);
-    const isMyLoan   = loan !== null && isLoggedIn && loan.user_id === currentUser.id;
+  const isLoggedIn = currentUser !== null;
+  const isAdmin = isLoggedIn && currentUser.role === "admin";
+  const loan = findActiveLoanForBook(book.id);
+  const isMyLoan =
+    loan !== null && isLoggedIn && loan.user_id === currentUser.id;
 
-    // Ligne d'info "emprunté par" : affichée seulement si on connaît
-    // l'emprunteur (admin voit tout ; un membre ne voit cette ligne
-    // QUE pour son propre emprunt, car activeLoans ne contient déjà
-    // que les emprunts auxquels il a droit de regard côté backend).
-    const borrowerLine = (book.available == 0 && loan)
-        ? `<p class="book-borrower">Emprunté par ${escapeHtml(loan.borrower_name)} · retour prévu le ${formatDate(loan.due_at)}</p>`
-        : '';
+  // Ligne d'info "emprunté par" : affichée seulement si on connaît
+  // l'emprunteur (admin voit tout ; un membre ne voit cette ligne
+  // QUE pour son propre emprunt, car activeLoans ne contient déjà
+  // que les emprunts auxquels il a droit de regard côté backend).
+  const borrowerLine =
+    book.available == 0 && loan
+      ? `<p class="book-borrower">Emprunté par ${escapeHtml(loan.borrower_name)} · retour prévu le ${formatDate(loan.due_at)}</p>`
+      : "";
 
-    let loanAction = '';
-    if (isLoggedIn) {
-        if (book.available == 1) {
-            loanAction = `<button class="btn btn-primary" onclick="handleBorrow(${book.id})">Emprunter</button>`;
-        } else if (isMyLoan || isAdmin) {
-            // Un admin peut retourner n'importe quel emprunt actif ;
-            // un membre seulement le sien (isMyLoan).
-            loanAction = `<button class="btn btn-outline" onclick="handleReturn(${book.id})">Retourner</button>`;
-        }
-        // Cas restant (livre indisponible, emprunté par quelqu'un
-        // d'autre, utilisateur = membre non-admin) : pas de bouton du
-        // tout, volontairement — il n'y a rien que ce membre puisse
-        // légitimement faire sur ce livre tant qu'il est emprunté.
+  let loanAction = "";
+  if (isLoggedIn) {
+    if (book.available == 1) {
+      // Seul un membre peut emprunter
+      if (!isAdmin) {
+        loanAction = `<button class="btn btn-primary" onclick="handleBorrow(${book.id})">Emprunter</button>`;
+      }
+    } else if (isMyLoan || isAdmin) {
+      // Un admin peut retourner n'importe quel emprunt actif
+      // Un membre peut retourner uniquement le sien
+      loanAction = `<button class="btn btn-outline" onclick="handleReturn(${book.id})">Retourner</button>`;
     }
+  }
 
-    const adminActions = isAdmin
-        ? `<button class="btn btn-icon" title="Modifier" onclick="openEditModal(${book.id})">✏️</button>
-           <button class="btn btn-icon" title="Supprimer" onclick="openDeleteConfirm(${book.id}, '${escapeHtml(book.title).replace(/'/g,"\\'")}')">🗑️</button>`
-        : '';
+  const adminActions = isAdmin
+    ? `<button class="btn btn-icon" title="Modifier" onclick="openEditModal(${book.id})">✏️</button>
+           <button class="btn btn-icon" title="Supprimer" onclick="openDeleteConfirm(${book.id}, '${escapeHtml(book.title).replace(/'/g, "\\'")}')">🗑️</button>`
+    : "";
 
-    return `
+  return `
     <article class="book-card" data-id="${book.id}">
         <div class="book-card-header">
             <h3 class="book-title">${escapeHtml(book.title)}</h3>
@@ -494,36 +536,36 @@ function buildBookCard(book) {
 // ============================================================
 
 async function handleBorrow(bookId) {
-    if (!currentUser) {
-        showToast("Connecte-toi pour emprunter un livre.", "error");
-        return;
-    }
+  if (!currentUser) {
+    showToast("Connecte-toi pour emprunter un livre.", "error");
+    return;
+  }
 
-    const { data } = await apiFetch('/loans/borrow', {
-        method: "POST",
-        body: JSON.stringify({ book_id: bookId }),
-    });
+  const { data } = await apiFetch("/loans/borrow", {
+    method: "POST",
+    body: JSON.stringify({ book_id: bookId }),
+  });
 
-    if (data.success) {
-        showToast(data.message, "success");
-        loadBooks();
-    } else {
-        showToast("Erreur : " + data.message, "error");
-    }
+  if (data.success) {
+    showToast(data.message, "success");
+    loadBooks();
+  } else {
+    showToast("Erreur : " + data.message, "error");
+  }
 }
 
 async function handleReturn(bookId) {
-    const { data } = await apiFetch('/loans/return', {
-        method: "POST",
-        body: JSON.stringify({ book_id: bookId }),
-    });
+  const { data } = await apiFetch("/loans/return", {
+    method: "POST",
+    body: JSON.stringify({ book_id: bookId }),
+  });
 
-    if (data.success) {
-        showToast(data.message, "success");
-        loadBooks();
-    } else {
-        showToast("Erreur : " + data.message, "error");
-    }
+  if (data.success) {
+    showToast(data.message, "success");
+    loadBooks();
+  } else {
+    showToast("Erreur : " + data.message, "error");
+  }
 }
 
 // ============================================================
@@ -531,23 +573,29 @@ async function handleReturn(bookId) {
 // ============================================================
 
 async function fetchBook(id) {
-    const { ok, data } = await apiFetch(`/books/${id}`);
-    return (ok && data.success) ? data.data : null;
+  const { ok, data } = await apiFetch(`/books/${id}`);
+  return ok && data.success ? data.data : null;
 }
 
 async function createBook(payload) {
-    const { data } = await apiFetch('/books', { method: "POST", body: JSON.stringify(payload) });
-    return data;
+  const { data } = await apiFetch("/books", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return data;
 }
 
 async function updateBook(id, payload) {
-    const { data } = await apiFetch(`/books/${id}`, { method: "PUT", body: JSON.stringify(payload) });
-    return data;
+  const { data } = await apiFetch(`/books/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  return data;
 }
 
 async function deleteBook(id) {
-    const { data } = await apiFetch(`/books/${id}`, { method: "DELETE" });
-    return data;
+  const { data } = await apiFetch(`/books/${id}`, { method: "DELETE" });
+  return data;
 }
 
 // ============================================================
@@ -555,40 +603,41 @@ async function deleteBook(id) {
 // ============================================================
 
 function openLoginModal() {
-    loginForm.reset();
-    document.getElementById("errLoginEmail").textContent = "";
-    document.getElementById("errLoginPassword").textContent = "";
-    loginOverlay.classList.remove("hidden");
+  loginForm.reset();
+  document.getElementById("errLoginEmail").textContent = "";
+  document.getElementById("errLoginPassword").textContent = "";
+  loginOverlay.classList.remove("hidden");
 }
 
 function closeLoginModal() {
-    loginOverlay.classList.add("hidden");
+  loginOverlay.classList.add("hidden");
 }
 
 loginForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
+  e.preventDefault();
 
-    const email    = document.getElementById("loginEmail").value.trim();
-    const password = document.getElementById("loginPassword").value;
+  const email = document.getElementById("loginEmail").value.trim();
+  const password = document.getElementById("loginPassword").value;
 
-    document.getElementById("errLoginEmail").textContent = "";
-    document.getElementById("errLoginPassword").textContent = "";
-    document.getElementById("btnSubmitLogin").textContent = "Connexion…";
+  document.getElementById("errLoginEmail").textContent = "";
+  document.getElementById("errLoginPassword").textContent = "";
+  document.getElementById("btnSubmitLogin").textContent = "Connexion…";
 
-    try {
-        const result = await login(email, password);
+  try {
+    const result = await login(email, password);
 
-        if (result.success) {
-            showToast(`Bienvenue, ${currentUser.full_name} !`, "success");
-            closeLoginModal();
-            renderAuthUI();
-            loadBooks();
-        } else {
-            document.getElementById("errLoginPassword").textContent = result.message || "Connexion impossible.";
-        }
-    } finally {
-        document.getElementById("btnSubmitLogin").textContent = "Se connecter";
+    if (result.success) {
+      showToast(`Bienvenue, ${currentUser.full_name} !`, "success");
+      closeLoginModal();
+      renderAuthUI();
+      loadBooks();
+    } else {
+      document.getElementById("errLoginPassword").textContent =
+        result.message || "Connexion impossible.";
     }
+  } finally {
+    document.getElementById("btnSubmitLogin").textContent = "Se connecter";
+  }
 });
 
 // ============================================================
@@ -596,98 +645,101 @@ loginForm.addEventListener("submit", async (e) => {
 // ============================================================
 
 function openAddModal() {
-    editingId = null;
-    modalTitle.textContent = "Ajouter un livre";
-    bookForm.reset();
-    bookIdInput.value = "";
-    clearFormErrors();
-    document.getElementById("available").checked = true;
-    modalOverlay.classList.remove("hidden");
+  editingId = null;
+  modalTitle.textContent = "Ajouter un livre";
+  bookForm.reset();
+  bookIdInput.value = "";
+  clearFormErrors();
+  document.getElementById("available").checked = true;
+  modalOverlay.classList.remove("hidden");
 }
 
 async function openEditModal(id) {
-    const book = await fetchBook(id);
-    if (!book) {
-        showToast("Livre introuvable.", "error");
-        return;
-    }
+  const book = await fetchBook(id);
+  if (!book) {
+    showToast("Livre introuvable.", "error");
+    return;
+  }
 
-    editingId = id;
-    modalTitle.textContent = "Modifier le livre";
+  editingId = id;
+  modalTitle.textContent = "Modifier le livre";
 
-    document.getElementById("title").value = book.title;
-    document.getElementById("author").value = book.author;
-    document.getElementById("category_id").value = book.category_id || "";
-    document.getElementById("year").value = book.year;
-    document.getElementById("available").checked = book.available == 1;
-    clearFormErrors();
+  document.getElementById("title").value = book.title;
+  document.getElementById("author").value = book.author;
+  document.getElementById("category_id").value = book.category_id || "";
+  document.getElementById("year").value = book.year;
+  document.getElementById("available").checked = book.available == 1;
+  clearFormErrors();
 
-    modalOverlay.classList.remove("hidden");
+  modalOverlay.classList.remove("hidden");
 }
 
 function closeModal() {
-    modalOverlay.classList.add("hidden");
-    editingId = null;
+  modalOverlay.classList.add("hidden");
+  editingId = null;
 }
 
 function clearFormErrors() {
-    ["Title", "Author", "Category", "Year"].forEach((f) => {
-        const el = document.getElementById("err" + f);
-        if (el) el.textContent = "";
-    });
+  ["Title", "Author", "Category", "Year"].forEach((f) => {
+    const el = document.getElementById("err" + f);
+    if (el) el.textContent = "";
+  });
 }
 
 function validateForm(data) {
-    let valid = true;
-    clearFormErrors();
+  let valid = true;
+  clearFormErrors();
 
-    if (!data.title.trim()) {
-        document.getElementById("errTitle").textContent = "Le titre est requis.";
-        valid = false;
-    }
-    if (!data.author.trim()) {
-        document.getElementById("errAuthor").textContent = "L'auteur est requis.";
-        valid = false;
-    }
-    const yr = parseInt(data.year);
-    if (!data.year || isNaN(yr) || yr < 1000 || yr > 2099) {
-        document.getElementById("errYear").textContent = "Année invalide (1000-2099).";
-        valid = false;
-    }
-    return valid;
+  if (!data.title.trim()) {
+    document.getElementById("errTitle").textContent = "Le titre est requis.";
+    valid = false;
+  }
+  if (!data.author.trim()) {
+    document.getElementById("errAuthor").textContent = "L'auteur est requis.";
+    valid = false;
+  }
+  const yr = parseInt(data.year);
+  if (!data.year || isNaN(yr) || yr < 1000 || yr > 2099) {
+    document.getElementById("errYear").textContent =
+      "Année invalide (1000-2099).";
+    valid = false;
+  }
+  return valid;
 }
 
 bookForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
+  e.preventDefault();
 
-    const payload = {
-        title: document.getElementById("title").value,
-        author: document.getElementById("author").value,
-        category_id: document.getElementById("category_id").value || null,
-        year: parseInt(document.getElementById("year").value),
-        available: document.getElementById("available").checked ? 1 : 0,
-    };
+  const payload = {
+    title: document.getElementById("title").value,
+    author: document.getElementById("author").value,
+    category_id: document.getElementById("category_id").value || null,
+    year: parseInt(document.getElementById("year").value),
+    available: document.getElementById("available").checked ? 1 : 0,
+  };
 
-    if (!validateForm(payload)) return;
+  if (!validateForm(payload)) return;
 
-    document.getElementById("btnSubmitForm").textContent = "Enregistrement…";
+  document.getElementById("btnSubmitForm").textContent = "Enregistrement…";
 
-    try {
-        const result = editingId
-            ? await updateBook(editingId, payload)
-            : await createBook(payload);
+  try {
+    const result = editingId
+      ? await updateBook(editingId, payload)
+      : await createBook(payload);
 
-        if (result.success) {
-            showToast(result.message || "Livre enregistré.", "success");
-            closeModal();
-            loadBooks();
-        } else {
-            const errMsg = result.errors ? result.errors.join(", ") : (result.message || "Erreur inconnue.");
-            showToast("Erreur : " + errMsg, "error");
-        }
-    } finally {
-        document.getElementById("btnSubmitForm").textContent = "Enregistrer";
+    if (result.success) {
+      showToast(result.message || "Livre enregistré.", "success");
+      closeModal();
+      loadBooks();
+    } else {
+      const errMsg = result.errors
+        ? result.errors.join(", ")
+        : result.message || "Erreur inconnue.";
+      showToast("Erreur : " + errMsg, "error");
     }
+  } finally {
+    document.getElementById("btnSubmitForm").textContent = "Enregistrer";
+  }
 });
 
 // ============================================================
@@ -695,28 +747,30 @@ bookForm.addEventListener("submit", async (e) => {
 // ============================================================
 
 function openDeleteConfirm(id, title) {
-    deleteTarget = id;
-    deleteTitle.textContent = title;
-    confirmOverlay.classList.remove("hidden");
+  deleteTarget = id;
+  deleteTitle.textContent = title;
+  confirmOverlay.classList.remove("hidden");
 }
 
-document.getElementById("btnConfirmDelete").addEventListener("click", async () => {
+document
+  .getElementById("btnConfirmDelete")
+  .addEventListener("click", async () => {
     if (!deleteTarget) return;
 
     try {
-        const result = await deleteBook(deleteTarget);
-        confirmOverlay.classList.add("hidden");
+      const result = await deleteBook(deleteTarget);
+      confirmOverlay.classList.add("hidden");
 
-        if (result.success) {
-            showToast(result.message || "Livre supprimé.", "success");
-            loadBooks();
-        } else {
-            showToast("Erreur : " + result.message, "error");
-        }
+      if (result.success) {
+        showToast(result.message || "Livre supprimé.", "success");
+        loadBooks();
+      } else {
+        showToast("Erreur : " + result.message, "error");
+      }
     } finally {
-        deleteTarget = null;
+      deleteTarget = null;
     }
-});
+  });
 
 // ============================================================
 //  ÉVÉNEMENTS GÉNÉRAUX
@@ -724,45 +778,53 @@ document.getElementById("btnConfirmDelete").addEventListener("click", async () =
 
 btnOpenLogin.addEventListener("click", openLoginModal);
 heroBtnLogin.addEventListener("click", openLoginModal);
-document.getElementById("btnCloseLogin").addEventListener("click", closeLoginModal);
-document.getElementById("btnCancelLogin").addEventListener("click", closeLoginModal);
+document
+  .getElementById("btnCloseLogin")
+  .addEventListener("click", closeLoginModal);
+document
+  .getElementById("btnCancelLogin")
+  .addEventListener("click", closeLoginModal);
 btnLogout.addEventListener("click", logout);
 
 btnOpenAdd.addEventListener("click", openAddModal);
 document.getElementById("btnCloseModal").addEventListener("click", closeModal);
 document.getElementById("btnCancelForm").addEventListener("click", closeModal);
 document.getElementById("btnCancelDelete").addEventListener("click", () => {
-    confirmOverlay.classList.add("hidden");
-    deleteTarget = null;
+  confirmOverlay.classList.add("hidden");
+  deleteTarget = null;
 });
 
-loginOverlay.addEventListener("click", (e) => { if (e.target === loginOverlay) closeLoginModal(); });
-modalOverlay.addEventListener("click", (e) => { if (e.target === modalOverlay) closeModal(); });
+loginOverlay.addEventListener("click", (e) => {
+  if (e.target === loginOverlay) closeLoginModal();
+});
+modalOverlay.addEventListener("click", (e) => {
+  if (e.target === modalOverlay) closeModal();
+});
 confirmOverlay.addEventListener("click", (e) => {
-    if (e.target === confirmOverlay) {
-        confirmOverlay.classList.add("hidden");
-        deleteTarget = null;
-    }
+  if (e.target === confirmOverlay) {
+    confirmOverlay.classList.add("hidden");
+    deleteTarget = null;
+  }
 });
 
 document.getElementById("btnFilter").addEventListener("click", loadBooks);
 document.getElementById("btnReset").addEventListener("click", () => {
-    document.getElementById("searchInput").value = "";
-    categoryFilter.value = "";
-    document.getElementById("availFilter").value = "";
-    loadBooks();
+  document.getElementById("searchInput").value = "";
+  categoryFilter.value = "";
+  document.getElementById("availFilter").value = "";
+  loadBooks();
 });
 document.getElementById("searchInput").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") loadBooks();
+  if (e.key === "Enter") loadBooks();
 });
 
 // ============================================================
 //  INITIALISATION
 // ============================================================
 async function init() {
-    await restoreSession();
-    await loadCategories();
-    await loadBooks();
+  await restoreSession();
+  await loadCategories();
+  await loadBooks();
 }
 
 document.addEventListener("DOMContentLoaded", init);
