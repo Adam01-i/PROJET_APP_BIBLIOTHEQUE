@@ -608,7 +608,7 @@ L'interface frontend est développée avec :
 Le frontend communique avec le backend exclusivement à travers l'API REST.
 
 ---
-
+<!-- 
 # 📸 Captures d'écran
 
 ## 🏠 Accueil
@@ -643,7 +643,7 @@ Le frontend communique avec le backend exclusivement à travers l'API REST.
 
 ## 🔄 Gestion des emprunts
 
-![Gestion des emprunts](docs/screenshots/emprunts.png)
+![Gestion des emprunts](docs/screenshots/emprunts.png) -->
 
 ---
 
