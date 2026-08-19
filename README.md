@@ -234,6 +234,10 @@ L'application peut être exécutée avec trois composants principaux :
 └────────────────────────────────────────────────────┘
 ```
 
+## 🏗️ Schema Architecture générale
+
+![Architecture](docs/architecture/architecture.png)
+
 ## Services
 
 | Service  | Technologie      |   Port |
