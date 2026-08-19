@@ -1,39 +1,62 @@
-# Environnements virtuels
-.venv/
+# ================================
+# ENVIRONNEMENTS VIRTUELS
+# ================================
 venv/
+.venv/
 ENV/
+env/
 
-# Python
+# ================================
+# ENVIRONNEMENT / SECRETS
+# ================================
+.env
+.env.*
+!.env.example
+
+# ================================
+# PYTHON
+# ================================
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
+
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 
-# Distribution / build
+# ================================
+# BUILD / DISTRIBUTION
+# ================================
 build/
 dist/
 *.egg-info/
 
-# Fichiers de configuration locaux
-.env
-.env.*
-.env.local
-
-# IDE / éditeur
+# ================================
+# IDE
+# ================================
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# Système
+# ================================
+# SYSTEME
+# ================================
 .DS_Store
 Thumbs.db
 
-# Logs
+# ================================
+# LOGS
+# ================================
 *.log
 
-# Données locales
+# ================================
+# BASES LOCALES
+# ================================
 *.sqlite3
+
+# ================================
+# PYTHON ENV
+# ================================
+.python-version
