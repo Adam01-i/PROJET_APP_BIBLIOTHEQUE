@@ -1,0 +1,39 @@
+# Environnements virtuels
+.venv/
+venv/
+ENV/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Distribution / build
+build/
+dist/
+*.egg-info/
+
+# Fichiers de configuration locaux
+.env
+.env.*
+.env.local
+
+# IDE / éditeur
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Système
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Données locales
+*.sqlite3
