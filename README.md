@@ -671,7 +671,7 @@ docker compose version
 Cloner le projet :
 
 ```bash
-git clone <URL_DU_REPOSITORY>
+git clone https://github.com/Adam01-i/PROJET_APP_BIBLIOTHEQUE
 cd PROJET_APP_BIBLIOTHEQUE
 ```
 
@@ -959,7 +959,7 @@ Enfin, Docker permet d'isoler les différents composants de l'application et de 
 
 **Adama Seck**
 
-Master 1 — Systèmes d'Information
+Master 2 — Systèmes d'Information
 
 Projet académique de développement d'une plateforme de gestion de bibliothèque.
 
@@ -979,83 +979,3 @@ Projet académique et pédagogique.
 ```
 
 ---
-
-# ⚠️ Mais je modifierais encore 3 choses
-
-Ton README contient actuellement des informations provenant de **plusieurs étapes du développement**. Il faut donc éviter de conserver certaines informations historiques comme si elles décrivaient encore l'application finale.
-
-Par exemple :
-
-> `models/Book.php` ne sont plus utilisés
-
-Ce genre de phrase est utile dans `V2 readme.md`, mais **pas dans la documentation finale**.
-
-Même chose pour :
-
-> « Je n'ai pas pu exécuter PHP dans mon environnement »
-
-❌ À supprimer du README final.
-
-Le README final doit parler de **ce que le projet est aujourd'hui**, pas de ce que l'IA n'arrivait pas à faire pendant son développement.
-
----
-
-# ⭐ Et surtout : ton README peut devenir beaucoup plus impressionnant
-
-Je te conseille même une page d'accueil comme ceci :
-
-```text
-                     📚 BIBLIOSPHERE
-
-       Plateforme moderne de gestion de bibliothèque
-
- ┌──────────────────────────────────────────────────────┐
- │                                                      │
- │        📚 Catalogue                                  │
- │        👥 Utilisateurs                               │
- │        🔐 Authentification JWT                       │
- │        🔄 Emprunts                                   │
- │        📊 Dashboard                                  │
- │        🛡️ Gestion des rôles                          │
- │        🐳 Docker                                     │
- │                                                      │
- └──────────────────────────────────────────────────────┘
-
- PHP 8.3  •  MySQL 8.4  •  Docker  •  REST API  •  JWT
-```
-
-Puis immédiatement une **capture d'écran principale de l'application** :
-
-```markdown
-![BiblioSphere](docs/screenshots/dashboard.png)
-```
-
-Ensuite seulement la documentation.
-
-Ça donnera beaucoup plus l'impression d'un **vrai produit logiciel** que d'un simple projet universitaire.
-
----
-
-## 🔥 Et je te recommande une dernière chose
-
-Vu que tu veux faire quelque chose de **"hyper méga complet et professionnel"**, ne te limite pas aux captures des pages.
-
-Ajoute également :
-
-* 📸 captures de toutes les interfaces importantes ;
-* 🏗️ diagramme d'architecture ;
-* 🗄️ diagramme de la base de données / ERD ;
-* 🔄 diagramme du parcours d'un emprunt ;
-* 🔐 schéma du processus JWT ;
-* 🐳 architecture Docker ;
-* 📡 documentation des endpoints API ;
-* 🧪 exemples de requêtes/réponses JSON ;
-* 📁 arbre du projet ;
-* 📊 captures du dashboard ;
-* 🛡️ démonstration du contrôle des rôles ;
-* 🔒 démonstration de la protection contre le retour d'un emprunt appartenant à un autre membre ;
-* 🎓 section dédiée aux compétences acquises.
-
-**Là, tu obtiens une vraie documentation technique de niveau Master 1**, utilisable à la fois sur GitHub, pour une soutenance, dans ton portfolio et comme preuve de compétence en architecture logicielle.
-
-Et avec tes fichiers actuels, **je peux aussi te faire une version encore plus poussée, basée sur le code réel du projet**, plutôt que de rester sur les informations présentes dans les anciens README : documentation de chaque dossier/classe, schéma exact des tables, toutes les routes réellement présentes, flux d'authentification, captures placées au bon endroit et README final cohérent avec **la V3 réellement installée**.
